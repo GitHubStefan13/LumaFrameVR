@@ -83,14 +83,15 @@ if(TARGET lumaframevr)
       -DSOURCE_DIR=${CMAKE_SOURCE_DIR}
       -DALLOW_HOST_ARCHITECTURE=${LUMAFRAMEVR_ALLOW_HOST_ARCHITECTURE}
       -P "${CMAKE_SOURCE_DIR}/cmake/PackageRelease.cmake"
-    # 3. Build the self-extracting installer and the directory bundle.
+    # 3. Build the self-extracting installer. It is written here and only copied afterwards,
+    #    so the manifest in step 4 always describes the .run that ships.
     COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_SOURCE_DIR}/scripts/build-installer.py"
       --version "${LUMAFRAMEVR_VERSION}"
       --build "${LUMAFRAMEVR_INSTALLER_BUILD}"
       --payload "${LUMAFRAMEVR_DIST_DIR}/${LUMAFRAMEVR_RELEASE_NAME}.tar.gz"
       --output "${LUMAFRAMEVR_DIST_DIR}/lumaframevr-desktop-installer-${LUMAFRAMEVR_VERSION}-${LUMAFRAMEVR_INSTALLER_BUILD}.run"
-      --directory "${LUMAFRAMEVR_DIST_DIR}/lumaframevr-installer-${LUMAFRAMEVR_VERSION}"
       ${LUMAFRAMEVR_HOST_ARCH_FLAG}
+    # 4. The update manifest and its checksum, which the player's Check for updates reads.
     COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_SOURCE_DIR}/scripts/update-manifest.py"
       --payload "${LUMAFRAMEVR_DIST_DIR}/${LUMAFRAMEVR_RELEASE_NAME}"
       --installer "${LUMAFRAMEVR_DIST_DIR}/lumaframevr-desktop-installer-${LUMAFRAMEVR_VERSION}-${LUMAFRAMEVR_INSTALLER_BUILD}.run"
@@ -98,6 +99,21 @@ if(TARGET lumaframevr)
       --release-url "${LUMAFRAMEVR_RELEASE_URL}"
       --notes "${LUMAFRAMEVR_RELEASE_NOTES}"
       --output "${LUMAFRAMEVR_DIST_DIR}/latest.json"
+    # 5. The directory bundle and the zip of it handed out to users. Everything that has to be
+    #    attached to the release is copied into the bundle's release/ directory, so publishing
+    #    a release is uploading that one directory and nothing can be forgotten.
+    COMMAND "${Python3_EXECUTABLE}" -B "${CMAKE_SOURCE_DIR}/scripts/build-installer.py"
+      --version "${LUMAFRAMEVR_VERSION}"
+      --build "${LUMAFRAMEVR_INSTALLER_BUILD}"
+      --payload "${LUMAFRAMEVR_DIST_DIR}/${LUMAFRAMEVR_RELEASE_NAME}.tar.gz"
+      --directory "${LUMAFRAMEVR_DIST_DIR}/lumaframevr-installer-${LUMAFRAMEVR_VERSION}"
+      --release-assets
+        "${LUMAFRAMEVR_DIST_DIR}/lumaframevr-desktop-installer-${LUMAFRAMEVR_VERSION}-${LUMAFRAMEVR_INSTALLER_BUILD}.run"
+        "${LUMAFRAMEVR_DIST_DIR}/lumaframevr-desktop-installer-${LUMAFRAMEVR_VERSION}-${LUMAFRAMEVR_INSTALLER_BUILD}.run.sha256"
+        "${LUMAFRAMEVR_DIST_DIR}/latest.json"
+        "${LUMAFRAMEVR_DIST_DIR}/latest.json.sha256"
+      --zip "${LUMAFRAMEVR_DIST_DIR}/lumaframevr-installer-${LUMAFRAMEVR_VERSION}.zip"
+      ${LUMAFRAMEVR_HOST_ARCH_FLAG}
     DEPENDS lumaframevr
     WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
     COMMENT "Building installer ${LUMAFRAMEVR_VERSION}-${LUMAFRAMEVR_INSTALLER_BUILD}"

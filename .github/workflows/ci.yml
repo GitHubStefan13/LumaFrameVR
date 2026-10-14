@@ -9,29 +9,45 @@ jobs:
   build-and-test:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - name: Install build dependencies
+      # The tree needs FFmpeg 7: cmake/NativeMedia.cmake requires libavformat >= 61,
+      # libavcodec >= 61, libavutil >= 59 and libswresample >= 5. ubuntu-24.04 ships
+      # FFmpeg 6.1 (modules 60/60/58/4), so pkg-config rejects it and Configure fails.
+      # Debian 13 (trixie) ships FFmpeg 7.1 from the distribution and is the host
+      # docs/BUILD.md was verified on, so the build and the suite run there. That image
+      # carries no git, which is why this is a docker container inside the job rather
+      # than a `container:` job: the checkout stays on the runner.
+      - name: Build and test on Debian 13 (FFmpeg 7)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build pkg-config \
-            libvulkan-dev mesa-vulkan-drivers \
-            libavformat-dev libavcodec-dev libavutil-dev libswresample-dev \
-            libpulse-dev libopenxr-dev glslc
+          docker run --rm --volume "$PWD:/src" --workdir /src debian:trixie bash -euo pipefail -c '
+            apt-get update
+            apt-get install -y --no-install-recommends \
+              build-essential cmake ninja-build pkg-config python3 \
+              libvulkan-dev mesa-vulkan-drivers glslc \
+              libopenxr-dev \
+              libavformat-dev libavcodec-dev libavutil-dev libswresample-dev \
+              libpulse-dev libjsoncpp-dev
 
-      - name: Configure
-        run: |
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DGLSLC_EXECUTABLE="$(command -v glslc)"
+            echo "--- media libraries ---"
+            pkg-config --modversion libavformat libavcodec libavutil libswresample
 
-      - name: Build
-        run: cmake --build build --parallel 2
+            echo "--- configure ---"
+            cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+              -DGLSLC_EXECUTABLE="$(command -v glslc)"
 
-      - name: Test
-        # The suite runs without a headset, a VPU, Steam or a media fixture: the tests that need
-        # those report themselves as skipped rather than passing on nothing.
-        run: ctest --test-dir build --output-on-failure
+            echo "--- build ---"
+            cmake --build build --parallel 2
 
-      - name: Installer acceptance tests
-        run: python3 -B -m unittest discover -s installer/tests -v
+            echo "--- test ---"
+            # The suite runs without a headset, a VPU, Steam or a media fixture: the tests
+            # that need those report themselves as skipped rather than passing on nothing.
+            # mesa-vulkan-drivers provides lavapipe; name it when Debian puts it there.
+            if [ -f /usr/share/vulkan/icd.d/lvp_icd.x86_64.json ]; then
+              export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+            fi
+            ctest --test-dir build --output-on-failure
+
+            echo "--- installer acceptance tests ---"
+            PYTHONDONTWRITEBYTECODE=1 python3 -B -m unittest discover -s installer/tests -v
+          '

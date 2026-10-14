@@ -26,10 +26,18 @@ struct ReleaseGate {
 };
 class Worker {
    public:
-    template<class Function>
-    explicit Worker(Function function) : thread_([this, function] { function(); done = true; }) {}
-    ~Worker() { gated = false; thread_.join(); }
+    template <class Function>
+    explicit Worker(Function function)
+        : thread_([this, function] {
+              function();
+              done = true;
+          }) {}
+    ~Worker() {
+        gated = false;
+        thread_.join();
+    }
     std::atomic<bool> done{};
+
    private:
     std::thread thread_;
 };
@@ -48,7 +56,7 @@ uint64_t digest(const AVPacket& packet) {
     m->stream = 0;
     m->audio_stream = 1;
     m->seek_target = -1;
-    m->trace_enabled = 1; // Replaces the removed Media::tracing field.
+    m->trace_enabled = 1;  // Replaces the removed Media::tracing field.
     for(int i = 0; i < 2; ++i) {
         auto* stream = avformat_new_stream(m->file, nullptr);
         require(stream != nullptr, "allocate reader streams");
@@ -70,7 +78,8 @@ void rewind_synthetic(::media::Session& session) {
 
 extern "C" int __real_av_read_frame(AVFormatContext*, AVPacket*);
 extern "C" int __wrap_av_read_frame(AVFormatContext* file, AVPacket* packet) {
-    if(file != intercepted) return __real_av_read_frame(file, packet);
+    if(file != intercepted)
+        return __real_av_read_frame(file, packet);
     reading = true;
     ++calls;
     while(gated) av_usleep(1000);
@@ -143,16 +152,20 @@ int lumaframevr::tests::packet_reader(int, char**) {
         require(av_gettime_relative() - started < 100000, "queued dequeue remains prompt during blocked refill");
         gated = false;
         std::array<bool, 2> ended{};
-        wait_for([&] {
-            for(int i = 0; i < 2; ++i) {
-                if(ended[i]) continue;
-                const int result = ::media::packet(*session.get(), i, *session.get()->packet);
-                require(result == 0 || result == AVERROR(EAGAIN) || result == AVERROR_EOF, "packet drain returns data/wait/EOF");
-                if(result == 0) actual[i] = actual[i] * 31 + digest(*session.get()->packet);
-                ended[i] = result == AVERROR_EOF;
-            }
-            return ended[0] && ended[1];
-        }, "both streams drain to EOF");
+        wait_for(
+                [&] {
+                    for(int i = 0; i < 2; ++i) {
+                        if(ended[i])
+                            continue;
+                        const int result = ::media::packet(*session.get(), i, *session.get()->packet);
+                        require(result == 0 || result == AVERROR(EAGAIN) || result == AVERROR_EOF, "packet drain returns data/wait/EOF");
+                        if(result == 0)
+                            actual[i] = actual[i] * 31 + digest(*session.get()->packet);
+                        ended[i] = result == AVERROR_EOF;
+                    }
+                    return ended[0] && ended[1];
+                },
+                "both streams drain to EOF");
         require(actual == expected, "packet bytes and order match reference on both streams");
         require(session.trace().packets > 0, "typed trace includes reader packets");
         media_reader_pause(session.get(), 1);
@@ -166,10 +179,12 @@ int lumaframevr::tests::packet_reader(int, char**) {
         failure = AVERROR(EIO);
         media_reader_pause(session.get(), 0);
         int result = AVERROR(EAGAIN);
-        wait_for([&] {
-            result = ::media::packet(*session.get(), 0, *session.get()->packet);
-            return result != AVERROR(EAGAIN);
-        }, "permanent read error reaches consumer");
+        wait_for(
+                [&] {
+                    result = ::media::packet(*session.get(), 0, *session.get()->packet);
+                    return result != AVERROR(EAGAIN);
+                },
+                "permanent read error reaches consumer");
         require(result == AVERROR(EIO), "read error code is preserved");
         gated = true;
         rewind_synthetic(session);
@@ -185,7 +200,8 @@ int lumaframevr::tests::packet_reader(int, char**) {
         intercepted = nullptr;
         // Real local demux/decode and repeated seeks complement the gated I/O fixture.
         const char* path = std::getenv("LUMAFRAMEVR_TEST_VIDEO");
-        if(!path) skip("LUMAFRAMEVR_TEST_VIDEO is not set");
+        if(!path)
+            skip("LUMAFRAMEVR_TEST_VIDEO is not set");
         auto opened = ::media::open(path, true);
         require(std::holds_alternative<::media::Session>(opened), "typed real session opens without VPU");
         auto real = std::move(std::get<::media::Session>(opened));
@@ -195,8 +211,7 @@ int lumaframevr::tests::packet_reader(int, char**) {
         std::array<size_t, 2> expected_count{}, actual_count{};
         int read_result;
         while((read_result = __real_av_read_frame(state->file, state->packet)) >= 0) {
-            const int stream = state->packet->stream_index == state->stream ? 0 :
-                               state->packet->stream_index == state->audio_stream ? 1 : -1;
+            const int stream = state->packet->stream_index == state->stream ? 0 : state->packet->stream_index == state->audio_stream ? 1 : -1;
             if(stream >= 0) {
                 file_expected[stream] = file_expected[stream] * 31 + digest(*state->packet);
                 ++expected_count[stream];
@@ -206,33 +221,36 @@ int lumaframevr::tests::packet_reader(int, char**) {
         require(read_result == AVERROR_EOF && expected_count[0] > 0, "real reference demux reaches EOF with video packets");
         require(av_seek_frame(state->file, state->stream, 0, AVSEEK_FLAG_BACKWARD) >= 0, "rewind real packet reference");
         std::array<bool, 2> file_ended{false, state->audio_stream < 0};
-        wait_for([&] {
-            for(int stream = 0; stream < 2; ++stream) {
-                if(file_ended[stream]) continue;
-                const int packet_result = ::media::packet(*state, stream, *state->packet);
-                require(packet_result == 0 || packet_result == AVERROR(EAGAIN) || packet_result == AVERROR_EOF,
-                        "real reader returns packet/wait/EOF");
-                if(packet_result == 0) {
-                    file_actual[stream] = file_actual[stream] * 31 + digest(*state->packet);
-                    ++actual_count[stream];
-                }
-                file_ended[stream] = packet_result == AVERROR_EOF;
-            }
-            return file_ended[0] && file_ended[1];
-        }, "real packet reader drains both streams");
-        require(file_actual == file_expected && actual_count == expected_count,
-                "real buffered packet bytes, timestamps, counts and order match direct FFmpeg demux");
+        wait_for(
+                [&] {
+                    for(int stream = 0; stream < 2; ++stream) {
+                        if(file_ended[stream])
+                            continue;
+                        const int packet_result = ::media::packet(*state, stream, *state->packet);
+                        require(packet_result == 0 || packet_result == AVERROR(EAGAIN) || packet_result == AVERROR_EOF, "real reader returns packet/wait/EOF");
+                        if(packet_result == 0) {
+                            file_actual[stream] = file_actual[stream] * 31 + digest(*state->packet);
+                            ++actual_count[stream];
+                        }
+                        file_ended[stream] = packet_result == AVERROR_EOF;
+                    }
+                    return file_ended[0] && file_ended[1];
+                },
+                "real packet reader drains both streams");
+        require(file_actual == file_expected && actual_count == expected_count, "real buffered packet bytes, timestamps, counts and order match direct FFmpeg demux");
         for(int i = 0; i < 20; ++i) {
             const double target = i % 2 ? 0.5 : 0;
             const auto seek = real.seek(target);
             require(seek.status == 0 && seek.error.empty(), "repeated typed seek/preroll succeeds: " + seek.error);
             ::media::Frame frame;
-            wait_for([&] {
-                frame = {}; // Preview (status 3) also owns a frame; release before the next call.
-                const auto next = real.next(frame);
-                require(next.status >= 0 && next.error.empty(), "typed decode returns no error");
-                return next.status == 1;
-            }, "seeked frame arrives");
+            wait_for(
+                    [&] {
+                        frame = {};  // Preview (status 3) also owns a frame; release before the next call.
+                        const auto next = real.next(frame);
+                        require(next.status >= 0 && next.error.empty(), "typed decode returns no error");
+                        return next.status == 1;
+                    },
+                    "seeked frame arrives");
             require(frame.get().pts >= target, "seek discards preceding frames");
         }
     });

@@ -6,17 +6,20 @@
 
 int lumaframevr::tests::v4l2_layout(int, char**) {
     return acceptance_main([] {
-        struct Case { uint32_t format, width, height; uint64_t pitch, chroma_rows, offset, bytes; };
+        struct Case {
+            uint32_t format, width, height;
+            uint64_t pitch, chroma_rows, offset, bytes;
+        };
         const Case cases[] = {
-            {V4L2_PIX_FMT_NV12, 96, 64, 96, 32, 6144, 9216},
-            {V4L2_PIX_FMT_NV12, 95, 65, 128, 33, 8320, 12544},
-            {media::v4l2_p010, 96, 64, 192, 32, 12288, 18432},
-            {media::v4l2_p010, 95, 65, 256, 33, 16640, 25088},
-            {V4L2_PIX_FMT_NV12, 7296, 3648, 7296, 1824, 26615808, 39923712},
-            {media::v4l2_p010, 7296, 3648, 14592, 1824, 53231616, 79847424},
-            // The allocated height includes driver padding; cropping does not shrink UV.
-            {media::v4l2_p010, 7296, 3680, 14848, 1840, 54640640, 81960960},
-            {media::v4l2_p010, 1, 1, 4, 1, 4, 8},
+                {V4L2_PIX_FMT_NV12, 96, 64, 96, 32, 6144, 9216},
+                {V4L2_PIX_FMT_NV12, 95, 65, 128, 33, 8320, 12544},
+                {media::v4l2_p010, 96, 64, 192, 32, 12288, 18432},
+                {media::v4l2_p010, 95, 65, 256, 33, 16640, 25088},
+                {V4L2_PIX_FMT_NV12, 7296, 3648, 7296, 1824, 26615808, 39923712},
+                {media::v4l2_p010, 7296, 3648, 14592, 1824, 53231616, 79847424},
+                // The allocated height includes driver padding; cropping does not shrink UV.
+                {media::v4l2_p010, 7296, 3680, 14848, 1840, 54640640, 81960960},
+                {media::v4l2_p010, 1, 1, 4, 1, 4, 8},
         };
         for(const auto& item : cases) {
             auto layout = media::v4l2_plane_layout(item.format, item.width, item.height, item.pitch);
@@ -48,14 +51,14 @@ int lumaframevr::tests::v4l2_layout(int, char**) {
         }
         require(!media::v4l2_plane_layout(media::v4l2_p010, 96, 64, 193), "P010 pitch sample-aligned");
         const auto q10c = v4l2_fourcc('Q', '1', '0', 'C');
-        struct Compressed { uint32_t width, height; uint64_t pitch, uv; };
-        for(const auto& item : {Compressed{7296, 3648, 9728, 35663872},
-                               Compressed{1937, 1081, 2624, 2859008}}) {
+        struct Compressed {
+            uint32_t width, height;
+            uint64_t pitch, uv;
+        };
+        for(const auto& item : {Compressed{7296, 3648, 9728, 35663872}, Compressed{1937, 1081, 2624, 2859008}}) {
             auto layout = media::v4l2_plane_layout(q10c, item.width, item.height, item.pitch);
             require(layout.has_value(), "documented Q10C mapping is exportable");
-            require(layout->format == media::v4l2_p010 &&
-                    layout->pitches == std::array<uint64_t, 2>{item.pitch, item.pitch} &&
-                    layout->offsets == std::array<uint64_t, 2>{0, item.uv},
+            require(layout->format == media::v4l2_p010 && layout->pitches == std::array<uint64_t, 2>{item.pitch, item.pitch} && layout->offsets == std::array<uint64_t, 2>{0, item.uv},
                     "Q10C exports P010 with driver pitch and page-aligned metadata/luma UV offset");
             require(media::v4l2_buffer_fits(*layout, item.uv + 1), "compressed extent is not a linear P010 row-size requirement");
             require(!media::v4l2_buffer_fits(*layout, item.uv), "compressed UV plane must start inside allocation");
@@ -71,10 +74,11 @@ int lumaframevr::tests::v4l2_layout(int, char**) {
 
 int lumaframevr::tests::v4l2_formats(int, char**) {
     return acceptance_main([] {
-        struct Case { media::V4l2Codec codec; uint32_t coded; };
-        for(const auto& item : {Case{media::V4l2Codec::H264, V4L2_PIX_FMT_H264},
-                               Case{media::V4l2Codec::Hevc, V4L2_PIX_FMT_HEVC},
-                               Case{media::V4l2Codec::Vp9, V4L2_PIX_FMT_VP9}}) {
+        struct Case {
+            media::V4l2Codec codec;
+            uint32_t coded;
+        };
+        for(const auto& item : {Case{media::V4l2Codec::H264, V4L2_PIX_FMT_H264}, Case{media::V4l2Codec::Hevc, V4L2_PIX_FMT_HEVC}, Case{media::V4l2Codec::Vp9, V4L2_PIX_FMT_VP9}}) {
             for(uint32_t bits : {8u, 10u}) {
                 auto formats = media::v4l2_formats({item.codec, 7296, 3648, bits});
                 require(formats.has_value(), "supported stream selects formats");

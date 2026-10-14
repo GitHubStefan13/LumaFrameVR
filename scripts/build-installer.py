@@ -7,7 +7,9 @@ Two distribution shapes come out of one source tree:
   Steam helper in one executable file. This is the file to download, double click
   in the file manager or copy to another machine and run over SSH.
 * an optional directory bundle - the same parts as separate files plus a double
-  clickable desktop entry, for users who prefer to unpack first.
+  clickable desktop entry, for users who prefer to unpack first. `--release-assets`
+  copies the files the project publishes for a release into the bundle's `release/`
+  directory, so that one directory holds everything to upload.
 
 Both are verified before they are written: the payload must carry the release
 name, launch.sh, the application binary and a SHA256SUMS.txt, and the binary must
@@ -20,6 +22,7 @@ import json
 import re
 import struct
 import tarfile
+import zipfile
 from pathlib import Path
 
 SCRIPT_NAME = 'install.sh'
@@ -40,6 +43,9 @@ def arguments():
     parser.add_argument('--source', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--output', type=Path, help='write the self extracting .run here')
     parser.add_argument('--directory', type=Path, help='additionally write a directory bundle here')
+    parser.add_argument('--release-assets', type=Path, nargs='+', default=[],
+                        help='files to publish for this release; copied into the bundle as release/<name>')
+    parser.add_argument('--zip', type=Path, help='write a zip of the directory bundle here')
     parser.add_argument('--record', type=Path, help='write a JSON build record here')
     parser.add_argument('--allow-unverified', action='store_true',
                         help='skip the payload integrity checks (tests only)')
@@ -107,6 +113,14 @@ def write_sums(directory, names):
     (directory / SUMS_NAME).write_text(''.join(lines), encoding='utf-8')
 
 
+def write_zip(directory, path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(path, 'w', zipfile.ZIP_DEFLATED) as archive:
+        for file in sorted(directory.rglob('*')):
+            if file.is_file():
+                archive.write(file, file.relative_to(directory).as_posix())
+
+
 def build_directory(target, args, script, helper, entry, payload, data):
     (target / 'payload').mkdir(parents=True, exist_ok=True)
     (target / SCRIPT_NAME).write_text(render_script(script, args.version, payload, {}), encoding='utf-8')
@@ -117,6 +131,15 @@ def build_directory(target, args, script, helper, entry, payload, data):
     (target / 'payload' / args.payload.name).write_bytes(data)
     (target / 'payload' / (args.payload.name + '.sha256')).write_text(
         payload['sha256'] + '  ' + args.payload.name + '\n', encoding='utf-8')
+    released = []
+    for asset in args.release_assets:
+        if not asset.is_file():
+            raise SystemExit('error: missing release asset ' + str(asset))
+        destination = target / 'release' / asset.name
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(asset.read_bytes())
+        destination.chmod(0o755 if asset.name.endswith('.run') else 0o644)
+        released.append('release/' + asset.name)
     (target / 'README.user.md').write_text(
         '# LumaFrameVR %s installer\n\n'
         'Run `./install.sh`, or double click "Install LumaFrameVR", to install LumaFrameVR for\n'
@@ -128,10 +151,15 @@ def build_directory(target, args, script, helper, entry, payload, data):
         'the file itself to be executable:\n\n'
         '    sh ./install.sh --install --no-steam --yes\n\n'
         'Actions: --install, --repair, --uninstall [--purge], --steam-add, --steam-remove,\n'
-        '--plan. Run `./install.sh --help` for every option.\n' % args.version,
+        '--plan. Run `./install.sh --help` for every option.\n\n'
+        'To install, `install.sh` and `payload/` are all that is needed. `release/` carries the\n'
+        'files the project publishes for this release - the self extracting installer, its\n'
+        'checksum and the update manifest `latest.json` that "Check for updates" reads - so that\n'
+        'one directory holds everything to attach to a release.\n' % args.version,
         encoding='utf-8')
     write_sums(target, [SCRIPT_NAME, HELPER_NAME, ENTRY_NAME, 'README.user.md',
-                        'payload/' + args.payload.name])
+                        'payload/' + args.payload.name] + released)
+    return released
 
 
 def main():
@@ -153,8 +181,14 @@ def main():
               'payload_bytes': payload['bytes'], 'payload_members': payload['members'],
               'release': payload['release']}
     if args.directory:
-        build_directory(args.directory, args, script, helper, entry, payload, data)
+        released = build_directory(args.directory, args, script, helper, entry, payload, data)
         record['directory'] = str(args.directory)
+        record['release_assets'] = released
+    if args.zip:
+        if not args.directory:
+            raise SystemExit('error: --zip needs --directory')
+        write_zip(args.directory, args.zip)
+        record['zip'] = str(args.zip)
     if args.output:
         header = solve_header(script, args.version, payload, data)
         args.output.parent.mkdir(parents=True, exist_ok=True)

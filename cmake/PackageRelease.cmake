@@ -257,9 +257,11 @@ foreach(entry IN LISTS source_entries)
   list(APPEND source_files "${entry}")
 endforeach()
 list(SORT source_files)
+# The zip format already implies deflate compression, so no COMPRESSION
+# argument is given: CMake rejects it for zip archives.
 file(ARCHIVE_CREATE OUTPUT "${staging}/${LIBCARRY_ARCHIVE}"
   PATHS ${source_files}
-  FORMAT zip COMPRESSION Deflate
+  FORMAT zip
   WORKING_DIRECTORY "${SOURCE_DIR}")
 
 # The release metadata: what this package was built from, and when.

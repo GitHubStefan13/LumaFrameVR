@@ -34,7 +34,8 @@ media::Result media::receive(Media& state) {
             return media->v4l2->receive(state);
         } catch(const std::exception& error) {
             const int switched = fallback_v4l2(state, error.what(), true);
-            if(switched < 0) return failure("switch V4L2 to FFmpeg", switched);
+            if(switched < 0)
+                return failure("switch V4L2 to FFmpeg", switched);
         }
     }
     av_frame_unref(media->frame);

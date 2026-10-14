@@ -41,8 +41,7 @@ int lumaframevr::tests::presentation_native(int, char**) {
         auto* p = stream->codecpar;
         auto* stereo = av_stereo3d_alloc();
         require(stereo != nullptr, "allocate stereo side data");
-        require(av_packet_side_data_add(&p->coded_side_data, &p->nb_coded_side_data, AV_PKT_DATA_STEREO3D,
-                                        stereo, sizeof(*stereo), 0) != nullptr, "attach stereo side data");
+        require(av_packet_side_data_add(&p->coded_side_data, &p->nb_coded_side_data, AV_PKT_DATA_STEREO3D, stereo, sizeof(*stereo), 0) != nullptr, "attach stereo side data");
         for(int type = 0; type < 3; ++type) {
             stereo->type = type == 0 ? AV_STEREO3D_2D : type == 1 ? AV_STEREO3D_SIDEBYSIDE : AV_STEREO3D_TOPBOTTOM;
             stereo->flags = AV_STEREO3D_FLAG_INVERT;
@@ -60,8 +59,7 @@ int lumaframevr::tests::presentation_native(int, char**) {
         auto* sphere = av_spherical_alloc(&size);
         require(sphere != nullptr, "allocate spherical side data");
         sphere->projection = AV_SPHERICAL_EQUIRECTANGULAR;
-        require(av_packet_side_data_add(&p->coded_side_data, &p->nb_coded_side_data, AV_PKT_DATA_SPHERICAL,
-                                        sphere, size, 0) != nullptr, "attach spherical side data");
+        require(av_packet_side_data_add(&p->coded_side_data, &p->nb_coded_side_data, AV_PKT_DATA_SPHERICAL, sphere, size, 0) != nullptr, "attach spherical side data");
         expect(2, 1, 0);
         sphere->projection = AV_SPHERICAL_EQUIRECTANGULAR_TILE;
         sphere->bound_left = sphere->bound_right = 1U << 30;

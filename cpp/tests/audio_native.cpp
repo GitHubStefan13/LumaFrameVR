@@ -24,17 +24,27 @@ void write_wav(const std::filesystem::path& path) {
     constexpr uint32_t bytes = fixture_frames * AUDIO_CHANNELS * sizeof(int16_t);
     // WAVE_FORMAT_EXTENSIBLE carries an explicit stereo mask, matching the
     // playback API's channel-layout contract (plain PCM WAV leaves it unknown).
-    file.write("RIFF", 4); little(60 + bytes, 4); file.write("WAVEfmt ", 8);
-    little(40, 4); little(0xfffe, 2); little(AUDIO_CHANNELS, 2); little(AUDIO_RATE, 4);
+    file.write("RIFF", 4);
+    little(60 + bytes, 4);
+    file.write("WAVEfmt ", 8);
+    little(40, 4);
+    little(0xfffe, 2);
+    little(AUDIO_CHANNELS, 2);
+    little(AUDIO_RATE, 4);
     little(AUDIO_RATE * AUDIO_CHANNELS * sizeof(int16_t), 4);
-    little(AUDIO_CHANNELS * sizeof(int16_t), 2); little(16, 2);
-    little(22, 2); little(16, 2); little(3, 4);
-    little(1, 4); little(0, 2); little(0x10, 2);
+    little(AUDIO_CHANNELS * sizeof(int16_t), 2);
+    little(16, 2);
+    little(22, 2);
+    little(16, 2);
+    little(3, 4);
+    little(1, 4);
+    little(0, 2);
+    little(0x10, 2);
     for(auto byte : {0x80, 0x00, 0x00, 0xaa, 0x00, 0x38, 0x9b, 0x71}) little(byte, 1);
-    file.write("data", 4); little(bytes, 4);
+    file.write("data", 4);
+    little(bytes, 4);
     for(int frame = 0; frame < fixture_frames; ++frame)
-        for(int channel = 0; channel < AUDIO_CHANNELS; ++channel)
-            little(static_cast<uint16_t>(sample_at(frame, channel)), 2);
+        for(int channel = 0; channel < AUDIO_CHANNELS; ++channel) little(static_cast<uint16_t>(sample_at(frame, channel)), 2);
     require(file.good(), "write complete PCM reference fixture");
 }
 ::media::Session open_audio(const std::filesystem::path& path) {
@@ -65,7 +75,7 @@ void compare_pcm(::media::Session& session, double target) {
     int64_t last{};
     const auto first_reference = static_cast<int64_t>(std::llround(target * AUDIO_RATE));
     const auto deadline = av_gettime_relative() + 5000000;
-    while(!audio.source_ended) { // Replaces the removed Audio::ended member.
+    while(!audio.source_ended) {  // Replaces the removed Audio::ended member.
         require(av_gettime_relative() < deadline, "PCM decode reaches EOF within deadline");
         const int decoded = audio.decode(*m);
         require(decoded >= 0, "decode real PCM through current Audio API: " + std::to_string(decoded) + " target=" + std::to_string(target));
@@ -79,8 +89,7 @@ void compare_pcm(::media::Session& session, double target) {
                     const auto reference = first_reference + audio.frame_start + i;
                     require(reference >= 0 && reference < fixture_frames, "decoded PCM remains within reference length");
                     for(int channel = 0; channel < AUDIO_CHANNELS; ++channel)
-                        near(samples[i * AUDIO_CHANNELS + channel], sample_at(static_cast<int>(reference), channel) / 32768.0,
-                             1e-5, "decoded PCM matches independent integer reference");
+                        near(samples[i * AUDIO_CHANNELS + channel], sample_at(static_cast<int>(reference), channel) / 32768.0, 1e-5, "decoded PCM matches independent integer reference");
                 }
                 last = audio.frame_start + audio.pcm->nb_samples;
             }
@@ -94,7 +103,8 @@ void compare_pcm(::media::Session& session, double target) {
     const auto result = session.audio(paused);
     require(result.result.status >= 0 && result.result.error.empty(), "typed audio tick succeeds");
     require(result.limit >= result.clock && result.limit <= session.get()->audio->output->end, "audio limit bounds playback clock");
-    if(session.get()->audio->output->corked) require(result.limit == result.clock, "corked output cannot advance limit");
+    if(session.get()->audio->output->corked)
+        require(result.limit == result.clock, "corked output cannot advance limit");
     return result;
 }
 double play_to(::media::Session& session, lumaframevr::tests::AudioTestOutput& output, double target) {
@@ -132,11 +142,13 @@ int lumaframevr::tests::audio_native(int argc, char** argv) {
             output.advance(0.6);
             require(session.get()->audio->output->poll(false) >= 0, "starved output remains healthy");
             const auto starved = session.get()->audio->output->time();
-            require(starved.status == 0 && starved.clock == starved.limit && starved.limit == session.get()->audio->output->end,
-                    "starvation stops clock at queued end");
+            require(starved.status == 0 && starved.clock == starved.limit && starved.limit == session.get()->audio->output->end, "starvation stops clock at queued end");
             for(int i = 0; i < 100; ++i) tick(session, true);
             const auto paused = tick(session, true).clock;
-            for(int i = 0; i < 200; ++i) { output.advance(0.001); tick(session, true); }
+            for(int i = 0; i < 200; ++i) {
+                output.advance(0.001);
+                tick(session, true);
+            }
             near(tick(session, true).clock, paused, 0.001, "pause keeps audio clock stable");
             for(int i = 0; i < 4; ++i) {
                 const double target = i % 2 ? 0.1 : 1.0;
@@ -164,8 +176,7 @@ int lumaframevr::tests::audio_native(int argc, char** argv) {
             require(session.get()->audio->output->poll(false) == AVERROR_EXTERNAL, "disconnected output reports low-level error");
             // Current typed policy continues video in silence instead of failing the session.
             const auto disconnected = session.audio(false);
-            require(disconnected.result.status == 0 && disconnected.done && session.get()->audio_unavailable,
-                    "typed session degrades to silent playback on output loss");
+            require(disconnected.result.status == 0 && disconnected.done && session.get()->audio_unavailable, "typed session degrades to silent playback on output loss");
             session.stop();
             require(!session.get()->audio && !session.get()->reader, "stop releases audio and reader ownership");
         }

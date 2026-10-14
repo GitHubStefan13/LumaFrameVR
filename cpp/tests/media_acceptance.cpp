@@ -103,8 +103,7 @@ int lumaframevr::tests::media(int, char**) {
         static_assert(!std::is_copy_constructible_v<::media::Frame> && std::is_nothrow_move_constructible_v<::media::Frame>);
         auto failed = ::media::open("/nonexistent/video.mp4", true);
         require(std::holds_alternative<::media::Error>(failed), "typed open returns error");
-        require(std::get<::media::Error>(failed).code == AVERROR(ENOENT) &&
-                        std::get<::media::Error>(failed).message.find("file=/nonexistent/video.mp4") != std::string::npos,
+        require(std::get<::media::Error>(failed).code == AVERROR(ENOENT) && std::get<::media::Error>(failed).message.find("file=/nonexistent/video.mp4") != std::string::npos,
                 "typed open preserves missing-file code and diagnostic");
         ::media::Frame retained;
         {
@@ -114,8 +113,7 @@ int lumaframevr::tests::media(int, char**) {
             require(std::get<::media::Session>(opened).get() == nullptr, "session move empties source");
             const auto description = session.info();
             require(description.width == 96 && description.height == 64 && description.bits == 8 && !description.hardware, "typed info returns software geometry and depth");
-            require(std::string(description.name) == session.get()->info.name && description.fps == session.get()->info.fps &&
-                            description.bitrate_mbps == session.get()->info.bitrate_mbps,
+            require(std::string(description.name) == session.get()->info.name && description.fps == session.get()->info.fps && description.bitrate_mbps == session.get()->info.bitrate_mbps,
                     "typed description preserves decoder name, rate and bitrate");
             require(session.reconfigure(false).status == 0 && session.reconfigure(true).status == 0, "software reconfiguration remains a no-op");
             require(session.seek(0).status == 0, "typed seek succeeds");
@@ -164,8 +162,7 @@ int lumaframevr::tests::media(int, char**) {
             av_dict_set(&stream->metadata, "stereo_mode", "SIDE BY SIDE", 0);
             require(::media::read_metadata(metadata_fixture) == ::media::Metadata{2, 1, 0}, "metadata tag case and stream precedence unchanged");
             media_read_metadata(&metadata_fixture);
-            require(std::equal(std::begin(metadata_fixture.metadata), std::end(metadata_fixture.metadata), ::media::Metadata{2, 1, 0}.begin()),
-                    "value metadata and stored fields agree");
+            require(std::equal(std::begin(metadata_fixture.metadata), std::end(metadata_fixture.metadata), ::media::Metadata{2, 1, 0}.begin()), "value metadata and stored fields agree");
             const std::string beyond_limit = std::string(63, 'x') + "mono";
             av_dict_set(&stream->metadata, "stereo_mode", beyond_limit.c_str(), 0);
             require(::media::read_metadata(metadata_fixture) == ::media::Metadata{2, 2, 0}, "metadata tag truncation remains 63 bytes");
@@ -207,8 +204,7 @@ int lumaframevr::tests::media(int, char**) {
         const auto support = ::media::supported(source.input().c_str());
         require(support.status == 1 && support.error.empty(), "typed inspection accepts real fixture");
         const auto missing = ::media::supported("/nonexistent/video.mp4");
-        require(missing.status == -1 && missing.error == ::media::failure("inspect video", AVERROR(ENOENT)).error,
-                "typed inspection preserves missing-file diagnostic");
+        require(missing.status == -1 && missing.error == ::media::failure("inspect video", AVERROR(ENOENT)).error, "typed inspection preserves missing-file diagnostic");
         require(::media::decodable(parameters) && decodable(&parameters), "H264 8-bit 420 policy unchanged");
         parameters.format = AV_PIX_FMT_YUV420P10LE;
         require(::media::decodable(parameters) && !decoder_name(&parameters), "10-bit H264 remains software only");
@@ -242,8 +238,7 @@ int lumaframevr::tests::media(int, char**) {
             ScopedDecoderMode mode(invalid_mode);
             const auto failed_mode = ::media::open(source.input().c_str(), true);
             require(std::holds_alternative<::media::Error>(failed_mode) && std::get<::media::Error>(failed_mode).code == AVERROR(EINVAL), "invalid decoder mode keeps EINVAL");
-            require(std::get<::media::Error>(failed_mode).message.find("open native decoder") != std::string::npos,
-                    "typed startup policy preserves operation diagnostic");
+            require(std::get<::media::Error>(failed_mode).message.find("open native decoder") != std::string::npos, "typed startup policy preserves operation diagnostic");
         }
         {
             Media failure_fixture{};
@@ -286,8 +281,7 @@ int lumaframevr::tests::media(int, char**) {
             while(const auto count = std::fread(bytes, 1, sizeof(bytes), log)) diagnostic.append(bytes, count);
             std::fclose(log);
             require(std::holds_alternative<::media::Session>(opened), "auto prefers the V4L2 queue and still opens");
-            require(diagnostic.find("own V4L2 unavailable") != std::string::npos &&
-                            diagnostic.find("/nonexistent/lumaframevr-v4l2-decoder") != std::string::npos &&
+            require(diagnostic.find("own V4L2 unavailable") != std::string::npos && diagnostic.find("/nonexistent/lumaframevr-v4l2-decoder") != std::string::npos &&
                             diagnostic.find("falling back to FFmpeg software") != std::string::npos,
                     "auto routes through our own V4L2 queue before FFmpeg");
             auto session = std::move(std::get<::media::Session>(opened));
@@ -315,8 +309,7 @@ int lumaframevr::tests::media(int, char**) {
             const auto defaults = parse_application_options(default_arguments);
             defaults.apply_decoder_option();
             require(!defaults.decoder && std::string(std::getenv("LUMAFRAMEVR_DECODER")) == "software", "absent CLI option leaves the environment unchanged");
-            require(application_help().find("--decoder auto|hardware|software|v4l2") != std::string_view::npos,
-                    "help documents the Steam-friendly decoder option");
+            require(application_help().find("--decoder auto|hardware|software|v4l2") != std::string_view::npos, "help documents the Steam-friendly decoder option");
         }
         {
             // This is part of the existing media case, so CTest's case count stays unchanged.
@@ -344,7 +337,9 @@ int lumaframevr::tests::media(int, char**) {
             auto session = std::move(std::get<::media::Session>(opened));
             require(!session.info().hardware, "V4L2 fallback uses FFmpeg software without retrying the VPU");
             ::media::Frame frame;
-            do { result = session.next(frame).status; } while(result == 2);
+            do {
+                result = session.next(frame).status;
+            } while(result == 2);
             require(result == 1 && frame.get().software, "V4L2 fallback delivers a software frame");
             require(std::equal(original.begin(), original.end(), frame.get().data[0]), "fallback preserves FFmpeg pixels");
             near(frame.get().pts, moved.pts(), 1e-9, "fallback preserves FFmpeg timestamp");

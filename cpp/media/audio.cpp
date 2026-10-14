@@ -179,15 +179,13 @@ static media::Result tick_audio(Media& state, int paused, double* clock, double*
         auto* output = media->audio->output;
         const int pulse_error = output->stream ? pa_context_errno(pa_stream_get_context(output->stream)) : 0;
         const int stream_state = output->stream ? static_cast<int>(pa_stream_get_state(output->stream)) : -1;
-        const int context_state =
-                output->context ? static_cast<int>(pa_context_get_state(output->context)) : -1;
+        const int context_state = output->context ? static_cast<int>(pa_context_get_state(output->context)) : -1;
         const char* server = output->context ? pa_context_get_server(output->context) : nullptr;
         const char* device = output->stream ? pa_stream_get_device_name(output->stream) : nullptr;
         fprintf(stderr,
                 "Audio: stream failed (result=%d, pulse=%s); server=%s device=%s stream_state=%d "
                 "context_state=%d; continuing without sound\n",
-                result, pulse_error ? pa_strerror(pulse_error) : "none recorded", server ? server : "unknown",
-                device ? device : "none", stream_state, context_state);
+                result, pulse_error ? pa_strerror(pulse_error) : "none recorded", server ? server : "unknown", device ? device : "none", stream_state, context_state);
         media->audio_unavailable = 1;
         if(done)
             *done = 1;
