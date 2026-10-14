@@ -46,8 +46,7 @@ int lumaframevr::tests::packet_limits(int, char**) {
         require(r.queue() == 0, "exact byte cap fits");
         require(r.buffered(0) == -1 && !r.filled(READ_AHEAD_US), "missing timestamps cannot pretend to be prefilled");
         pending(1);
-        require(r.queue() == AVERROR(EAGAIN) && r.limited && r.bytes == MAX_PACKET_BYTES,
-                "one byte beyond cap retains pending reference");
+        require(r.queue() == AVERROR(EAGAIN) && r.limited && r.bytes == MAX_PACKET_BYTES, "one byte beyond cap retains pending reference");
         require(r.take(1, *m->packet) == AVERROR(ENOBUFS), "blocked opposite stream reports byte pressure");
         require(r.take(0, *m->packet) == 0 && m->packet->size == MAX_PACKET_BYTES, "dequeue releases byte budget");
         require(r.queue() == 0 && !r.limited && r.bytes == 1, "pending packet resumes after dequeue");
@@ -59,11 +58,9 @@ int lumaframevr::tests::packet_limits(int, char**) {
         require(r.limited && r.pending->buf && r.bytes == MAX_PACKETS, "packet-count pressure preserves pending ownership");
         require(r.take(0, *m->packet) == 0 && r.queue() == 0 && !r.limited, "packet-count budget resumes after dequeue");
         const auto buffer = session.buffer(false);
-        require(!buffer.ready && buffer.video_us == -1 && buffer.bytes == MAX_PACKETS,
-                "typed Session cannot infer readiness from packet count without timestamps");
+        require(!buffer.ready && buffer.video_us == -1 && buffer.bytes == MAX_PACKETS, "typed Session cannot infer readiness from packet count without timestamps");
         media_clear_packets(m, AV_NOPTS_VALUE);
-        require(!r.bytes && !r.limited && r.filling && !r.pending->buf && !av_fifo_can_read(r.packets[0]),
-                "clear releases payloads and resets pressure");
+        require(!r.bytes && !r.limited && r.filling && !r.pending->buf && !av_fifo_can_read(r.packets[0]), "clear releases payloads and resets pressure");
         require(r.take(0, *m->packet) == AVERROR(EAGAIN), "empty queue is nonblocking");
     });
 }

@@ -8,11 +8,15 @@
 
 namespace {
 lumaframevr::tests::AudioTestOutput* active{};
-pa_stream* fake_stream() { return reinterpret_cast<pa_stream*>(active); }
+pa_stream* fake_stream() {
+    return reinterpret_cast<pa_stream*>(active);
+}
 lumaframevr::tests::AudioTestOperation* operation(pa_operation* value) {
-    if(!active) return nullptr;
+    if(!active)
+        return nullptr;
     for(const auto& item : active->operations)
-        if(reinterpret_cast<pa_operation*>(item.get()) == value) return item.get();
+        if(reinterpret_cast<pa_operation*>(item.get()) == value)
+            return item.get();
     return nullptr;
 }
 }  // namespace
@@ -22,7 +26,9 @@ AudioTestOutput::AudioTestOutput() {
     require(!active, "audio boundary fixture is not nested");
     active = this;
 }
-AudioTestOutput::~AudioTestOutput() { active = nullptr; }
+AudioTestOutput::~AudioTestOutput() {
+    active = nullptr;
+}
 pa_operation* AudioTestOutput::request(const char* kind, pa_stream_success_cb_t callback, void* userdata) {
     requests.emplace_back(kind);
     auto item = std::make_unique<AudioTestOperation>();
@@ -35,14 +41,17 @@ pa_operation* AudioTestOutput::request(const char* kind, pa_stream_success_cb_t 
 }
 void AudioTestOutput::complete() {
     for(auto& item : operations) {
-        if(item->state != PA_OPERATION_RUNNING || (item->drain && queued_seconds > 0)) continue;
+        if(item->state != PA_OPERATION_RUNNING || (item->drain && queued_seconds > 0))
+            continue;
         item->state = PA_OPERATION_DONE;
-        if(item->callback) item->callback(fake_stream(), callback_success, item->userdata);
+        if(item->callback)
+            item->callback(fake_stream(), callback_success, item->userdata);
     }
     confirmed_cork = callback_success ? requested_cork : -1;
 }
 void AudioTestOutput::advance(double seconds) {
-    if(!confirmed_cork) queued_seconds = std::max(0.0, queued_seconds - seconds);
+    if(!confirmed_cork)
+        queued_seconds = std::max(0.0, queued_seconds - seconds);
 }
 void AudioTestOutput::assert_paused() const {
     require(confirmed_cork == 1, "pause is confirmed, not merely requested");
@@ -52,7 +61,8 @@ void AudioTestOutput::assert_paused() const {
 extern "C" {
 AudioOutput* __real_output_open();
 AudioOutput* __wrap_output_open() {
-    if(!active) return __real_output_open();
+    if(!active)
+        return __real_output_open();
     auto* output = new AudioOutput{};
     output->stream = fake_stream();
     output->corked = 1;
@@ -62,8 +72,10 @@ AudioOutput* __wrap_output_open() {
 }
 int __real_pa_mainloop_iterate(pa_mainloop*, int, int*);
 int __wrap_pa_mainloop_iterate(pa_mainloop* loop, int block, int* result) {
-    if(!active) return __real_pa_mainloop_iterate(loop, block, result);
-    if(active->auto_complete) active->complete();
+    if(!active)
+        return __real_pa_mainloop_iterate(loop, block, result);
+    if(active->auto_complete)
+        active->complete();
     return 0;
 }
 pa_context_state_t __real_pa_context_get_state(const pa_context*);
@@ -81,45 +93,53 @@ pa_operation_state_t __wrap_pa_operation_get_state(const pa_operation* value) {
 }
 void __real_pa_operation_cancel(pa_operation*);
 void __wrap_pa_operation_cancel(pa_operation* value) {
-    if(auto* item = operation(value)) item->state = PA_OPERATION_CANCELLED;
-    else __real_pa_operation_cancel(value);
+    if(auto* item = operation(value))
+        item->state = PA_OPERATION_CANCELLED;
+    else
+        __real_pa_operation_cancel(value);
 }
 void __real_pa_operation_unref(pa_operation*);
 void __wrap_pa_operation_unref(pa_operation* value) {
-    if(!operation(value)) __real_pa_operation_unref(value);
+    if(!operation(value))
+        __real_pa_operation_unref(value);
 }
 pa_operation* __real_pa_stream_cork(pa_stream*, int, pa_stream_success_cb_t, void*);
 pa_operation* __wrap_pa_stream_cork(pa_stream* stream, int cork, pa_stream_success_cb_t callback, void* userdata) {
-    if(!active || stream != fake_stream()) return __real_pa_stream_cork(stream, cork, callback, userdata);
+    if(!active || stream != fake_stream())
+        return __real_pa_stream_cork(stream, cork, callback, userdata);
     active->requested_cork = cork;
     return active->request(cork ? "cork" : "uncork", callback, userdata);
 }
 pa_operation* __real_pa_stream_flush(pa_stream*, pa_stream_success_cb_t, void*);
 pa_operation* __wrap_pa_stream_flush(pa_stream* stream, pa_stream_success_cb_t callback, void* userdata) {
-    if(!active || stream != fake_stream()) return __real_pa_stream_flush(stream, callback, userdata);
+    if(!active || stream != fake_stream())
+        return __real_pa_stream_flush(stream, callback, userdata);
     active->queued_seconds = 0;
     return active->request("flush", callback, userdata);
 }
 pa_operation* __real_pa_stream_update_timing_info(pa_stream*, pa_stream_success_cb_t, void*);
 pa_operation* __wrap_pa_stream_update_timing_info(pa_stream* stream, pa_stream_success_cb_t callback, void* userdata) {
-    if(!active || stream != fake_stream()) return __real_pa_stream_update_timing_info(stream, callback, userdata);
+    if(!active || stream != fake_stream())
+        return __real_pa_stream_update_timing_info(stream, callback, userdata);
     return active->request("timing", callback, userdata);
 }
 pa_operation* __real_pa_stream_drain(pa_stream*, pa_stream_success_cb_t, void*);
 pa_operation* __wrap_pa_stream_drain(pa_stream* stream, pa_stream_success_cb_t callback, void* userdata) {
-    if(!active || stream != fake_stream()) return __real_pa_stream_drain(stream, callback, userdata);
+    if(!active || stream != fake_stream())
+        return __real_pa_stream_drain(stream, callback, userdata);
     return active->request("drain", callback, userdata);
 }
 size_t __real_pa_stream_writable_size(const pa_stream*);
 size_t __wrap_pa_stream_writable_size(const pa_stream* stream) {
-    if(!active || stream != fake_stream()) return __real_pa_stream_writable_size(stream);
+    if(!active || stream != fake_stream())
+        return __real_pa_stream_writable_size(stream);
     return static_cast<size_t>(std::max(0.0, 0.25 - active->queued_seconds) * AUDIO_RATE) * AUDIO_FRAME_BYTES;
 }
 int __real_pa_stream_write(pa_stream*, const void*, size_t, pa_free_cb_t, int64_t, pa_seek_mode_t);
 int __wrap_pa_stream_write(pa_stream* stream, const void* data, size_t bytes, pa_free_cb_t release, int64_t offset, pa_seek_mode_t seek) {
-    if(!active || stream != fake_stream()) return __real_pa_stream_write(stream, data, bytes, release, offset, seek);
-    require(active->output && !active->output->reset && !active->output->timing && !active->output->operation,
-            "PCM writes wait for reset, timing and cork operations to settle");
+    if(!active || stream != fake_stream())
+        return __real_pa_stream_write(stream, data, bytes, release, offset, seek);
+    require(active->output && !active->output->reset && !active->output->timing && !active->output->operation, "PCM writes wait for reset, timing and cork operations to settle");
     const auto* samples = static_cast<const float*>(data);
     active->samples.insert(active->samples.end(), samples, samples + bytes / sizeof(float));
     active->queued_seconds += bytes / static_cast<double>(AUDIO_RATE * AUDIO_FRAME_BYTES);
@@ -127,7 +147,8 @@ int __wrap_pa_stream_write(pa_stream* stream, const void* data, size_t bytes, pa
 }
 int __real_pa_stream_get_latency(pa_stream*, pa_usec_t*, int*);
 int __wrap_pa_stream_get_latency(pa_stream* stream, pa_usec_t* latency, int* negative) {
-    if(!active || stream != fake_stream()) return __real_pa_stream_get_latency(stream, latency, negative);
+    if(!active || stream != fake_stream())
+        return __real_pa_stream_get_latency(stream, latency, negative);
     *latency = static_cast<pa_usec_t>(std::llround(active->queued_seconds * 1000000));
     *negative = 0;
     return 0;
@@ -138,7 +159,8 @@ int __wrap_pa_stream_disconnect(pa_stream* stream) {
 }
 void __real_pa_stream_unref(pa_stream*);
 void __wrap_pa_stream_unref(pa_stream* stream) {
-    if(!active || stream != fake_stream()) __real_pa_stream_unref(stream);
+    if(!active || stream != fake_stream())
+        __real_pa_stream_unref(stream);
 }
 pa_context* __real_pa_stream_get_context(const pa_stream*);
 pa_context* __wrap_pa_stream_get_context(const pa_stream* stream) {

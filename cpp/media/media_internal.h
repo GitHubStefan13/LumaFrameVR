@@ -4,8 +4,8 @@
 #include "media_v4l2.hpp"
 #ifdef __cplusplus
 #include <atomic>
-using std::atomic_uint;
 using std::atomic_int;
+using std::atomic_uint;
 extern "C" {
 #endif
 #include <libavcodec/avcodec.h>

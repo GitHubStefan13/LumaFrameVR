@@ -9,15 +9,18 @@ std::optional<media::V4l2PlaneLayout> media::v4l2_plane_layout(uint32_t format, 
         // linear samples.
         const auto align_up = [](uint64_t value, uint64_t alignment) -> std::optional<uint64_t> {
             const uint64_t padding = (alignment - value % alignment) % alignment;
-            if(value > UINT64_MAX - padding) return {};
+            if(value > UINT64_MAX - padding)
+                return {};
             return value + padding;
         };
         const uint64_t meta_stride = *align_up((uint64_t(width) + 47) / 48, 64);
         const uint64_t meta_height = *align_up((uint64_t(height) + 3) / 4, 16);
-        if(pitch > UINT64_MAX / height) return {};
+        if(pitch > UINT64_MAX / height)
+            return {};
         const auto metadata = align_up(meta_stride * meta_height, 4096);
         const auto luma = align_up(pitch * height, 4096);
-        if(!metadata || !luma || *luma >= UINT64_MAX - *metadata) return {};
+        if(!metadata || !luma || *luma >= UINT64_MAX - *metadata)
+            return {};
         const uint64_t uv = *metadata + *luma;
         // Compression has no linear row-sized payload bound: both plane starts must be
         // inside the driver's allocation. Vulkan independently checks its real import
@@ -40,12 +43,10 @@ bool media::v4l2_buffer_fits(const V4l2PlaneLayout& layout, uint64_t size) {
     if(!layout.width || !layout.height || !layout.required_bytes || size < layout.required_bytes)
         return false;
     if(layout.modifier) {
-        return layout.modifier == v4l2_qcom_compressed && layout.format == v4l2_p010 &&
-               layout.pitches[0] && layout.pitches[1] && layout.offsets[0] < size && layout.offsets[1] < size;
+        return layout.modifier == v4l2_qcom_compressed && layout.format == v4l2_p010 && layout.pitches[0] && layout.pitches[1] && layout.offsets[0] < size && layout.offsets[1] < size;
     }
     for(size_t i = 0; i < 2; ++i) {
-        if(!layout.pitches[i] || !layout.rows[i] || layout.offsets[i] > size ||
-           layout.rows[i] > (size - layout.offsets[i]) / layout.pitches[i])
+        if(!layout.pitches[i] || !layout.rows[i] || layout.offsets[i] > size || layout.rows[i] > (size - layout.offsets[i]) / layout.pitches[i])
             return false;
     }
     return true;
@@ -56,10 +57,17 @@ std::optional<media::V4l2Formats> media::v4l2_formats(V4l2Stream stream) {
         return {};
     uint32_t coded;
     switch(stream.codec) {
-        case V4l2Codec::H264: coded = V4L2_PIX_FMT_H264; break;
-        case V4l2Codec::Hevc: coded = V4L2_PIX_FMT_HEVC; break;
-        case V4l2Codec::Vp9: coded = V4L2_PIX_FMT_VP9; break;
-        default: return {};
+        case V4l2Codec::H264:
+            coded = V4L2_PIX_FMT_H264;
+            break;
+        case V4l2Codec::Hevc:
+            coded = V4L2_PIX_FMT_HEVC;
+            break;
+        case V4l2Codec::Vp9:
+            coded = V4L2_PIX_FMT_VP9;
+            break;
+        default:
+            return {};
     }
     return V4l2Formats{coded, stream.bits == 10 ? v4l2_q10c : V4L2_PIX_FMT_NV12};
 }

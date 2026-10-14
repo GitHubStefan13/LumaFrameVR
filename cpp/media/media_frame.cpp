@@ -96,9 +96,9 @@ static media::Result next_frame(Media& state, media::FrameData& value) {
         media->first_frame_observed = 1;
         media->info.bits = out->color.bits;
         const char* fmt = av_get_pix_fmt_name(static_cast<AVPixelFormat>(owned->format));
-        fprintf(stderr, "Decoded frame: decoder=%s hardware_frames=%s pixel_format=%s depth=%d transfer=%d primaries=%d matrix=%d range=%d chroma_location=%d\n", media->v4l2 ? "v4l2" : media->decoder->codec->name,
-                out->software ? "no" : "yes (DRM PRIME)", fmt ? fmt : "unknown", out->color.bits, out->color.transfer, out->color.primaries, out->colorspace, out->full_range,
-                out->color.chroma_location);
+        fprintf(stderr, "Decoded frame: decoder=%s hardware_frames=%s pixel_format=%s depth=%d transfer=%d primaries=%d matrix=%d range=%d chroma_location=%d\n",
+                media->v4l2 ? "v4l2" : media->decoder->codec->name, out->software ? "no" : "yes (DRM PRIME)", fmt ? fmt : "unknown", out->color.bits, out->color.transfer, out->color.primaries,
+                out->colorspace, out->full_range, out->color.chroma_location);
         fprintf(stderr, "HDR metadata: mastering_min=%.4f mastering_max=%.1f MaxCLL=%.1f MaxFALL=%.1f nits\n", out->color.mastering_min_nits, out->color.mastering_max_nits, out->color.max_cll,
                 out->color.max_fall);
         if(!out->software) {

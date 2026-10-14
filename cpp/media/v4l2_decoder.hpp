@@ -12,8 +12,8 @@ namespace media {
 class V4l2Device {
    public:
     virtual ~V4l2Device() = default;
-    virtual int control(unsigned long request, void* argument) = 0; // 0 or -errno
-    virtual int poll_events() = 0; // nonblocking: 1 for POLLPRI, 0 if empty, or -errno
+    virtual int control(unsigned long request, void* argument) = 0;  // 0 or -errno
+    virtual int poll_events() = 0;                                   // nonblocking: 1 for POLLPRI, 0 if empty, or -errno
     virtual void* map(uint32_t bytes, uint32_t offset) = 0;
     virtual void unmap(void* address, uint32_t bytes) noexcept = 0;
     virtual uint64_t exported_size(int fd) = 0;
@@ -42,9 +42,9 @@ struct V4l2Frame {
 // device wide and another client's hold looks identical to our own leak.
 // LUMAFRAMEVR_V4L2_CAPTURE_HEADROOM overrides the capture headroom (default 8).
 bool await_capture_leases(bool require_released_queues = true) noexcept;
-uint64_t outstanding_capture_leases() noexcept; // frames still holding a buffer
-uint64_t outstanding_capture_queues() noexcept; // queues whose buffers are not released yet
-uint64_t open_decoders() noexcept;              // decoder instances this process still has open
+uint64_t outstanding_capture_leases() noexcept;  // frames still holding a buffer
+uint64_t outstanding_capture_queues() noexcept;  // queues whose buffers are not released yet
+uint64_t open_decoders() noexcept;               // decoder instances this process still has open
 // The /dev/video* nodes, sorted, as the adapter opens them.
 std::vector<std::string> v4l2_device_nodes();
 // Which processes hold any of these device nodes. The driver's memory is device
@@ -61,14 +61,15 @@ class V4l2Decoder {
     // One complete access unit, Annex-B for H264/HEVC (FFmpeg owns conversion).
     // EAGAIN leaves the caller's packet intact. Exceptions carry errno failures.
     int submit(std::span<const uint8_t> packet, int64_t timestamp_us);
-    int receive(V4l2Frame& frame); // 0, -EAGAIN or AVERROR_EOF
-    int drain(); // V4L2_DEC_CMD_STOP, once input is submitted
+    int receive(V4l2Frame& frame);  // 0, -EAGAIN or AVERROR_EOF
+    int drain();                    // V4L2_DEC_CMD_STOP, once input is submitted
     // Flush both queues for a seek: STREAMOFF on both, the unleased capture
     // slots requeued, then STREAMON. The driver keeps its coded and capture
     // allocations, so a seek has nothing to allocate and cannot be refused one,
     // and a frame leased across it is requeued by reclaim() when the consumer
     // retires it. EAGAIN only while a reset is already in progress.
     int reset();
+
    private:
     struct State;
     std::unique_ptr<State> state_;

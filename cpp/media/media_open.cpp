@@ -75,13 +75,17 @@ OpenResult open(const char* path, bool software_only) {
     // frame.
     const auto ten_bit_format = [](AVPixelFormat format) {
         switch(format) {
-        case AV_PIX_FMT_YUV420P10LE: case AV_PIX_FMT_YUV420P10BE:
-        case AV_PIX_FMT_YUV422P10LE: case AV_PIX_FMT_YUV422P10BE:
-        case AV_PIX_FMT_YUV444P10LE: case AV_PIX_FMT_YUV444P10BE:
-        case AV_PIX_FMT_P010LE: case AV_PIX_FMT_P010BE:
-            return true;
-        default:
-            return false;
+            case AV_PIX_FMT_YUV420P10LE:
+            case AV_PIX_FMT_YUV420P10BE:
+            case AV_PIX_FMT_YUV422P10LE:
+            case AV_PIX_FMT_YUV422P10BE:
+            case AV_PIX_FMT_YUV444P10LE:
+            case AV_PIX_FMT_YUV444P10BE:
+            case AV_PIX_FMT_P010LE:
+            case AV_PIX_FMT_P010BE:
+                return true;
+            default:
+                return false;
         }
     };
     // The ten-bit refusal guards the software path, which packs 8-bit YUV. The V4L2 decoder carries
@@ -90,8 +94,7 @@ OpenResult open(const char* path, bool software_only) {
     // option is recorded before the workers start.
     const char* requested_decoder = std::getenv("LUMAFRAMEVR_DECODER");
     const bool v4l2_requested = requested_decoder && std::string_view(requested_decoder) == "v4l2";
-    if(!v4l2_requested &&
-       (p->bits_per_raw_sample > 8 || ten_bit_format(static_cast<AVPixelFormat>(p->format)))) {
+    if(!v4l2_requested && (p->bits_per_raw_sample > 8 || ten_bit_format(static_cast<AVPixelFormat>(p->format)))) {
         return Error{AVERROR_INVALIDDATA, unsupported_video(p, path).error};
     }
     media->packet = av_packet_alloc();

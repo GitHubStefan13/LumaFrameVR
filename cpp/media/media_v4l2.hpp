@@ -29,6 +29,7 @@ class V4l2Playback {
     void reset(Media& media);
     ~V4l2Playback();
     Result receive(Media& media);
+
    private:
     Result receive_once(Media& media);
     struct State;
