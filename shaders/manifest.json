@@ -1,0 +1,13 @@
+{
+  "runtime": [
+    "quad.vert",
+    "video.frag",
+    "beam_strip.frag",
+    "controller_mesh.vert",
+    "controller_mesh.frag"
+  ],
+  "reference": [
+    "dmabuf_check.comp",
+    "video_color_check.comp"
+  ]
+}

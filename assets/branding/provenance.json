@@ -1,0 +1,39 @@
+{
+  "source": "user-source.jpg",
+  "sha256": "2df0948edf110e80e4bfe803debb5f024c50923942ab6c900f7f70a426d6cb51",
+  "icon_source_rect": [
+    60,
+    100,
+    535,
+    555
+  ],
+  "logo_source_rect": [
+    550,
+    130,
+    1240,
+    500
+  ],
+  "runtime_format": "uint32 little-endian width/height followed by top-down RGBA8888",
+  "assets": {
+    "icon": [
+      512,
+      512
+    ],
+    "logo": [
+      690,
+      370
+    ],
+    "grid": [
+      920,
+      430
+    ],
+    "portrait": [
+      600,
+      900
+    ],
+    "hero": [
+      1920,
+      620
+    ]
+  }
+}

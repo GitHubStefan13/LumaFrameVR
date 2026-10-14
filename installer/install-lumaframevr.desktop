@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Install LumaFrameVR
+Comment=Install LumaFrameVR for the current user
+Exec=sh -c 'cd "$(dirname "$1")" && exec ./install.sh --ui' sh %k
+Icon=utilities-file-archiver
+Terminal=true
+StartupNotify=false
+Categories=System;Settings;

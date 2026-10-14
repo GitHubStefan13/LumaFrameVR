@@ -1,0 +1,4 @@
+add_library(lumaframevr_profile_options cpp/diagnostics/profile_options.cpp cpp/diagnostics/profile_help.cpp cpp/diagnostics/profile_watchdog.cpp)
+target_include_directories(lumaframevr_profile_options PUBLIC cpp/diagnostics)
+target_link_libraries(lumaframevr_profile_options PUBLIC lumaframevr_options)
+target_compile_options(lumaframevr_profile_options PRIVATE -Wall -Wextra -Wpedantic -Werror)

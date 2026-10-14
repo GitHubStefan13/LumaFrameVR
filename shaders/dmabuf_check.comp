@@ -1,0 +1,10 @@
+#version 450
+layout(local_size_x = 8, local_size_y = 8) in;
+layout(binding = 0) uniform sampler2D image;
+layout(binding = 1, std430) buffer Result { vec4 pixels[]; };
+layout(push_constant) uniform Size { ivec2 size; ivec2 rows; };
+void main() {
+    ivec2 p = ivec2(gl_GlobalInvocationID.xy);
+    if (p.x >= size.x || p.y >= rows.y) return;
+    pixels[p.y * size.x + p.x] = texture(image, (vec2(p + ivec2(0, rows.x)) + 0.5) / vec2(size));
+}

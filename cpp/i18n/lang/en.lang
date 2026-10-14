@@ -1,0 +1,157 @@
+# LumaFrameVR interface language file.
+# Copy this file, change the code and name, and translate the values.
+# Keys are stable; unknown keys are ignored, missing keys fall back to English.
+code = en
+name = English
+
+browser.folders = Folders
+browser.places = Places
+browser.grid = Grid
+browser.list = List
+browser.items = {count} items
+browser.settings = Settings
+browser.quit = Quit
+browser.passthrough = Camera passthrough
+browser.parent = ..
+browser.stopping = Stopping previous video...
+browser.reading = Reading folder...
+browser.select_folder = Select a folder to explore it.
+
+place.home = Home
+place.videos = Videos
+place.downloads = Downloads
+place.documents = Documents
+place.music = Music
+place.pictures = Pictures
+place.filesystem = File System
+
+viewer.title = Viewer advanced settings
+viewer.hidden = Show hidden files and folders
+viewer.hidden.detail = Include dot-prefixed entries
+viewer.thumbnails = Save folder thumbnails
+viewer.thumbnails.detail = Private cache; originals are not modified
+viewer.remember = Remember last folder and volume
+viewer.remember.detail = Restore on launch; never auto-play media
+viewer.language = Language
+viewer.language.detail = Choose the interface language
+viewer.on = ON
+viewer.off = OFF
+viewer.close = Close
+viewer.hint = B: close     D-pad: choose setting     A: toggle
+
+welcome.title = Choose your language
+welcome.detail = This is shown once. You can change it later in Viewer advanced settings.
+welcome.confirm = Continue
+welcome.hint = D-pad: choose language     A: confirm
+
+preview.title = Preview
+preview.duration = Duration {time}
+
+transport.back = Back
+transport.loading_image = Loading image...
+transport.image = Image {width} x {height}
+transport.time_unknown = --:--
+
+video.title = Video settings
+video.rotation.title = Video rotation
+video.position.title = Stereo / position
+video.reset.hint = A: reset
+video.mode.position = Mode  ‹ Stereo / position ›
+video.mode.rotation = Mode  ‹ Orientation / zoom ›
+video.hint = Sticks: adjust. Beam: drag a slider.
+video.row.projection = Projection
+video.row.format = Format
+video.row.stereo = Stereo
+video.row.sbs_format = SBS format
+video.row.tb_format = Top/bottom format
+video.row.eye_order = Eye order
+video.row.reset = Reset
+video.row.reset.detail = Restore defaults
+video.row.image_center = Image {index} center {axis}
+video.row.lens = Lens k{index}
+video.value.flat = Flat
+video.value.fisheye = Fisheye
+video.value.equirectangular = Equirectangular
+video.value.degrees = {degrees} degrees
+video.value.none = n/a
+video.value.mono = Mono
+video.value.side_by_side = Side by side
+video.value.top_bottom = Top / bottom
+video.value.full = Full
+video.value.half = Half
+video.value.normal = Normal
+video.value.reversed = Reversed
+video.value.restore = Restore defaults
+
+rotation.yaw = Yaw
+rotation.pitch = Pitch
+rotation.roll = Roll
+rotation.zoom = Zoom
+rotation.degrees = {value} deg
+rotation.percent = {value}%
+rotation.unavailable_mono = unavailable for Mono
+rotation.stereo_offset_h = Stereo offset H
+rotation.stereo_offset_v = Stereo offset V
+rotation.position_h = Position H
+rotation.position_v = Position V
+
+info.device = Device
+info.memory = Memory
+info.playback = Playback
+info.decode = Decode
+info.render = Render
+info.sync = Sync
+info.queue = Queue
+info.media = Media
+info.stream = Stream
+info.na = N/A
+info.still_image = Still image
+info.device_usage = CPU {cpu}  GPU {gpu}
+info.memory_usage = {used} / {total} GiB
+
+telemetry.not_opened = not opened
+telemetry.pending = pending
+telemetry.hardware = HW
+telemetry.software = SW
+telemetry.sync_in = in sync
+telemetry.sync_slight = slight
+telemetry.sync_out = out of sync
+telemetry.bitrate_unknown = bitrate unknown
+telemetry.decode = {decoder} ({status})
+telemetry.render = {fps} fps target {target}
+telemetry.drift = {drift}ms worst {worst}ms {verdict}
+telemetry.queue = video {queue}  dropped {dropped}  skipped {skipped}  late {late}
+telemetry.media = {kind}  {bitrate}
+telemetry.stream_local = local  buffer {buffer}ms
+telemetry.stream_network = net {rate} Mbit/s  buf {buffer}ms ({bytes} MiB)  underruns {underruns}  rebuffer {rebuffers}
+telemetry.playback = {status}  {position} / {duration}
+
+error.unsupported = Unsupported filetype.
+error.preview_gpu = Preview GPU: {detail}
+error.explorer_preview = Explorer preview: {detail}
+error.explorer_image = Explorer image: {detail}
+error.image = Image: {detail}
+error.passthrough_unavailable = Passthrough unavailable: {detail}
+error.passthrough_unsupported = XR runtime does not support camera passthrough
+
+telemetry.local = local
+telemetry.network = network
+viewer.version = Version {version}
+video.button.position = Stereo / position
+video.button.rotation = Orientation / zoom
+video.value.degrees_short = {degrees}°
+video.tab.rotation = Rotation
+video.tab.position = Position
+browser.name = Name
+welcome.free = LumaFrameVR is free, open source software, licensed under the GPL-3.0-or-later. Nobody should charge you for it: if you were asked to pay, get it from its GitHub page instead.
+viewer.licences = Licences shipped with this copy
+viewer.update.check = Check for updates
+viewer.update.install = Install update and restart
+viewer.update.checking = Checking for updates...
+viewer.update.latest = LumaFrameVR {version} is the latest release
+viewer.update.available = LumaFrameVR {version} is available.
+viewer.update.more = Details {page}/{pages}
+viewer.update.start_failed = Could not start updater: {detail}
+viewer.update.no_output = Updater exited without a message
+viewer.update.invalid_output = Updater returned an invalid result
+viewer.update.too_long = Updater message exceeds the supported size

@@ -1,0 +1,986 @@
+#!/bin/sh
+# LumaFrameVR desktop installer.
+#
+# Installs the ARM64 release payload, a desktop entry, an icon and an optional
+# Steam shortcut into the current user's home directory. No root, no Python and
+# no sandbox are required for the install path; Python 3 (stdlib only) is used
+# solely by the optional Steam shortcut step, because Steam's shortcuts.vdf is a
+# binary format.
+#
+# Typical layout after an install into the default prefix ~/.local:
+#
+#   ~/.local/opt/lumaframevr/releases/<version>/   application payload
+#   ~/.local/opt/lumaframevr/current               symlink to that release
+#   ~/.local/bin/lumaframevr                       command line launcher
+#   ~/.local/share/applications/lumaframevr.desktop
+#   ~/.local/share/icons/hicolor/512x512/apps/lumaframevr.png
+#   ~/.local/share/lumaframevr/install-record.txt  what this installer created
+#   ~/.local/state/lumaframevr/installer.log       installer log
+#
+# User data written by the application itself lives in the standard XDG
+# locations (~/.config/lumaframevr, ~/.cache/lumaframevr) and is kept on
+# uninstall unless --purge is given.
+set -eu
+
+# These three lines are owned by the build, not by hand: scripts/build-installer.py replaces
+# them with the project version from CMakeLists.txt and the payload it embeds, and refuses to
+# build when any of them is missing. Their values here are only a placeholder.
+VERSION=0.0.0
+PATH_MARKER="# LumaFrameVR PATH"
+APP_NAME=LumaFrameVR
+PAYLOAD_NAME=lumaframevr-steam-frame-arm64-0.0.0.tar.gz
+PAYLOAD_SHA256=UNSET_PAYLOAD_SHA256
+PAYLOAD_BYTES=0
+PAYLOAD_OFFSET=0
+HELPER_OFFSET=0
+RELEASE_NAME=lumaframevr-steam-frame-arm64-0.0.0
+
+ACTION=
+WITH_STEAM=ask
+PURGE=no
+KEEP_STEAM=no
+ASSUME_YES=no
+ADD_TO_PATH=no
+UI=auto
+PREFIX_OVERRIDE=
+
+say() { printf '%s\n' "$*"; }
+warn() { printf '%s\n' "$*" >&2; }
+die() { warn "error: $*"; exit 1; }
+
+usage() {
+    cat <<'USAGE'
+Usage: install.sh [ACTION] [OPTIONS]
+
+Actions:
+  --install        Install LumaFrameVR, or update it when it is already there (default)
+  --update         Same, and says so: keeps settings and the Steam shortcut
+  --repair         Restore missing or damaged files of an existing install
+  --uninstall      Remove the application, desktop entry and icon
+  --steam-add      Add LumaFrameVR to Steam as a non-Steam game
+  --steam-remove   Remove the Steam shortcut
+  --plan           Print what would be done, change nothing
+
+Options:
+  --ui             Use graphical dialogs (kdialog or zenity) when available
+  --no-ui          Never use graphical dialogs
+  --steam          Also add the Steam shortcut while installing
+  --no-steam       Never touch Steam
+  --purge          With --uninstall: also delete saved settings and thumbnails
+  --keep-steam     With --uninstall: leave the Steam shortcut in place
+  --yes            Answer yes to the questions a terminal install would ask
+  --add-to-path    Add the command directory to PATH in ~/.profile so that the
+                   launcher can be started by name in a terminal
+  --prefix DIR     Install below DIR instead of ~/.local
+  --payload FILE   Use FILE as the release payload instead of the embedded one
+  -h, --help       This text
+
+The installation is per user and never needs root. Everything this installer
+creates is recorded in <prefix>/share/lumaframevr/install-record.txt, and
+--uninstall removes exactly those paths.
+USAGE
+}
+
+while [ $# -gt 0 ]; do
+    case $1 in
+        --install) ACTION=install ;;
+        --update) ACTION=update ;;
+        --repair) ACTION=repair ;;
+        --uninstall) ACTION=uninstall ;;
+        --steam-add) ACTION=steam-add ;;
+        --steam-remove) ACTION=steam-remove ;;
+        --plan) ACTION=plan ;;
+        --ui) UI=yes ;;
+        --no-ui) UI=no ;;
+        --steam) WITH_STEAM=yes ;;
+        --no-steam) WITH_STEAM=no ;;
+        --purge) PURGE=yes ;;
+        --keep-steam) KEEP_STEAM=yes ;;
+        --yes) ASSUME_YES=yes ;;
+        --add-to-path) ADD_TO_PATH=yes ;;
+        --prefix) [ $# -ge 2 ] || die "--prefix needs a directory"; PREFIX_OVERRIDE=$2; shift ;;
+        --payload) [ $# -ge 2 ] || die "--payload needs a file"; PAYLOAD_FILE=$2; shift ;;
+        -h|--help) usage; exit 0 ;;
+        *) usage >&2; die "unknown argument: $1" ;;
+    esac
+    shift
+done
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+
+resolve_paths() {
+    prefix=${PREFIX_OVERRIDE:-${LUMAFRAMEVR_PREFIX:-$HOME/.local}}
+    case $prefix in /*) ;; *) die "the install prefix must be an absolute path" ;; esac
+    case $prefix in /|/usr|/usr/*|/opt|/opt/*|/etc|/etc/*|/bin|/sbin|/lib|/lib/*)
+        die "refusing the system prefix $prefix; choose a per user prefix such as \$HOME/.local" ;;
+    esac
+    app=$prefix/opt/lumaframevr
+    releases=$app/releases
+    release=$releases/$VERSION
+    current=$app/current
+    launcher=$prefix/bin/lumaframevr
+    entry_dir=$prefix/share/applications
+    entry=$entry_dir/lumaframevr.desktop
+    icon=$prefix/share/icons/hicolor/512x512/apps/lumaframevr.png
+    record_dir=$prefix/share/lumaframevr
+    record=$record_dir/install-record.txt
+    state_dir=${XDG_STATE_HOME:-$HOME/.local/state}/lumaframevr
+    log=$state_dir/installer.log
+    config_dir=${XDG_CONFIG_HOME:-$HOME/.config}/lumaframevr
+    cache_dir=${XDG_CACHE_HOME:-$HOME/.cache}/lumaframevr
+    staging=$app/.staging.$$
+    mkdir -p -- "$prefix"
+    prefix_resolved=$(CDPATH= cd -- "$prefix" && pwd -P)
+    [ -n "$prefix_resolved" ] || prefix_resolved=$prefix
+}
+
+# Every path this installer deletes is checked to sit inside the prefix, so a
+# corrupt record can never point the uninstaller at unrelated user files.
+inside_prefix() {
+    case $1 in "$prefix"/*|"$prefix_resolved"/*) return 0 ;; *) return 1 ;; esac
+}
+
+ensure_directory() {
+    mkdir -p -- "$1"
+    resolved=$(CDPATH= cd -- "$1" && pwd -P)
+    inside_prefix "$resolved" || die "refusing to write outside the prefix: $1"
+}
+
+refuse_linked_target() {
+    [ -L "$1" ] && die "refusing to write through the symlink $1"
+    return 0
+}
+
+# mktemp creates the file, so a name that another process already occupies cannot be used.
+fresh_temporary_for() {
+    mktemp -- "$(dirname -- "$1")/.$(basename -- "$1").XXXXXX"
+}
+
+record_versions() {
+    [ -f "$record" ] || return 1
+    sed -n 's/^release \([0-9][0-9.]*\)$/\1/p' "$record"
+}
+
+record_payload() {
+    [ -f "$record" ] || return 1
+    sed -n 's/^payload_sha256 \([0-9a-f]*\)$/\1/p' "$record"
+}
+
+installed_version() {
+    record_versions 2>/dev/null | tail -n 1
+}
+
+# True when something is installed and it is not the version this installer carries.
+update_target() {
+    installed=$(installed_version)
+    [ -n "$installed" ] || return 1
+    [ "$installed" != "$VERSION" ]
+}
+
+describe_installed() {
+    installed=$(installed_version)
+    if [ -z "$installed" ]; then
+        printf '%s' "not installed"
+    elif [ "$installed" = "$VERSION" ]; then
+        printf 'already at %s' "$VERSION"
+    else
+        printf 'installed: %s' "$installed"
+    fi
+}
+
+log_line() {
+    [ -n "${log:-}" ] || return 0
+    mkdir -p -- "$state_dir"
+    printf '%s %s\n' "$(date -Iseconds)" "$*" >>"$log"
+}
+
+payload_available() {
+    [ -n "${PAYLOAD_FILE:-}" ] && [ -f "$PAYLOAD_FILE" ] && return 0
+    [ -f "$SCRIPT_DIR/payload/$PAYLOAD_NAME" ] && return 0
+    [ "${PAYLOAD_OFFSET:-0}" -gt 0 ] && return 0
+    return 1
+}
+
+payload_source() {
+    if [ -n "${PAYLOAD_FILE:-}" ]; then
+        [ -f "$PAYLOAD_FILE" ] || die "payload not found: $PAYLOAD_FILE"
+        printf 'file %s' "$PAYLOAD_FILE"
+    elif [ -f "$SCRIPT_DIR/payload/$PAYLOAD_NAME" ]; then
+        printf 'file %s' "$SCRIPT_DIR/payload/$PAYLOAD_NAME"
+    else
+        printf 'embedded'
+    fi
+}
+
+payload_stream() {
+    set -- $(payload_source)
+    if [ "$1" = file ]; then cat -- "$2"; else
+        [ "${PAYLOAD_OFFSET:-0}" -gt 0 ] || die "no payload available next to the installer"
+        tail -c +$((PAYLOAD_OFFSET + 1)) "$0" | head -c "$PAYLOAD_BYTES"
+    fi
+}
+
+payload_size() {
+    set -- $(payload_source)
+    if [ "$1" = file ]; then wc -c <"$2" | tr -d ' '; else printf '%s' "$PAYLOAD_BYTES"; fi
+}
+
+verify_payload() {
+    say "Verifying the release payload ..."
+    size=$(payload_size)
+    if [ "$PAYLOAD_BYTES" -gt 0 ] && [ "$size" != "$PAYLOAD_BYTES" ]; then
+        die "the payload is $size bytes, expected $PAYLOAD_BYTES"
+    fi
+    sum=$(payload_stream | sha256sum | cut -d' ' -f1)
+    if [ "$PAYLOAD_SHA256" != UNSET_PAYLOAD_SHA256 ] && [ "$sum" != "$PAYLOAD_SHA256" ]; then
+        die "payload checksum mismatch: got $sum"
+    fi
+    say "Payload checksum ok."
+}
+
+check_release_tree() {
+    [ -f "$1/SHA256SUMS.txt" ] || return 1
+    [ -f "$1/launch.sh" ] || return 1
+    [ -f "$1/lumaframevr" ] || return 1
+    (cd -- "$1" && sha256sum -c --quiet SHA256SUMS.txt) >/dev/null 2>&1 || return 1
+    # The player must be a Linux ELF64. A real release is AArch64; a payload
+    # built on a development host is marked host_architecture in BUILD_INFO.json
+    # and is accepted for local testing only.
+    machine=$(od -An -tx1 -j18 -N2 -- "$1/lumaframevr" | tr -d ' \n')
+    case $machine in
+        b700) return 0 ;;
+        *)
+            grep -q '"host_architecture"[[:space:]]*:[[:space:]]*true' "$1/BUILD_INFO.json" 2>/dev/null && return 0
+            return 1 ;;
+    esac
+}
+
+free_kilobytes() {
+    if [ -n "${LUMAFRAMEVR_INSTALLER_FREE_KB:-}" ]; then
+        printf '%s' "$LUMAFRAMEVR_INSTALLER_FREE_KB"
+        return 0
+    fi
+    df -Pk -- "$1" 2>/dev/null | awk 'NR == 2 { print $4 }'
+}
+
+require_space() {
+    needed=$(($(payload_size) / 512 + 65536))
+    available=$(free_kilobytes "$HOME")
+    [ -n "$available" ] && [ "$available" -ge "$needed" ] ||
+        die "not enough free space in $HOME: need about $((needed / 1024)) MiB"
+}
+
+# The player links against libraries the frame may keep outside the standard
+# loader path. The OpenXR loader in particular is not in /usr/lib on the frame.
+# Find the directories that hold the player's missing libraries at install time
+# and put them on the launcher's library path, so the player starts without the
+# user setting anything.
+find_library_directory() {
+    library=$1
+    for candidate in \
+        /usr/lib/aarch64-linux-gnu /usr/lib /lib/aarch64-linux-gnu /lib \
+        /opt/steamvr/bin/linuxarm64 /opt/steamvr/lib/linuxarm64 \
+        "$HOME/.steam/steam/steamapps/common/SteamVR/bin/linuxarm64" \
+        "$HOME/.local/share/Steam/steamapps/common/SteamVR/bin/linuxarm64"
+    do
+        [ -e "$candidate/$library" ] && { printf '%s' "$candidate"; return 0; }
+    done
+    # Steam runtimes (SteamVR, Proton) and Steam library folders keep their own
+    # copies of some libraries, the OpenXR loader among them. Match the exact
+    # name or a versioned variant (libfoo.so.1 -> libfoo.so.1.2.3).
+    for root in /opt/steamvr \
+                "$HOME"/.steam/steam/steamapps/common/* \
+                "$HOME"/.local/share/Steam/steamapps/common/* \
+                "$HOME"/.steam/steam/steamapps/*/* \
+                "$HOME"/.local/share/Steam/steamapps/*/*; do
+        [ -d "$root" ] || continue
+        found=$(find "$root" -maxdepth 5 \( -name "$library" -o -name "$library.*" \) -print -quit 2>/dev/null)
+        [ -n "$found" ] && { dirname -- "$found"; return 0; }
+    done
+    return 1
+}
+
+# The directories that resolve the player's unresolved libraries, colon
+# separated. Empty when the player already resolves against the system.
+resolve_library_directories() {
+    player=$release/lumaframevr
+    [ -x "$player" ] || return 0
+    command -v ldd >/dev/null 2>&1 || return 0
+    missing=$(ldd "$player" 2>/dev/null | awk '/not found/ {print $1}' | sort -u)
+    [ -n "$missing" ] || return 0
+    directories=""
+    for library in $missing; do
+        directory=$(find_library_directory "$library") || {
+            warn "warning: $library was not found on this system; the player may not start."
+            continue
+        }
+        case ":$directories:" in
+            *":$directory:"*) ;;
+            *) directories="$directories${directories:+:}$directory" ;;
+        esac
+    done
+    printf '%s' "$directories"
+}
+
+write_launcher() {
+    runtime=$(runtime_json)
+    appid=$(steam_appid)
+    library_directories=$(resolve_library_directories)
+    ensure_directory "$(dirname -- "$launcher")"
+    refuse_linked_target "$launcher"
+    temporary=$(fresh_temporary_for "$launcher")
+    cat >"$temporary" <<LAUNCHER
+#!/bin/sh
+# LumaFrameVR launcher. Sets up the runtime environment and starts the current
+# release. It lives outside the versioned release directory, so repairs and
+# upgrades never have to touch it.
+set -eu
+app='$app'
+state='$state_dir'
+config='$config_dir'
+cache='$cache_dir'
+runtime='$runtime'
+appid='$appid'
+library_directories='$library_directories'
+release="\$app/current"
+log="\${LUMAFRAMEVR_LOG_FILE:-\$state/startup.log}"
+mkdir -p -- "\$(dirname -- "\$log")"
+printf 'LumaFrameVR startup log: %s\n' "\$log"
+exec >>"\$log" 2>&1
+printf '\n--- LumaFrameVR launch ---\n'
+date -Iseconds
+printf 'Prefix=%s Release=%s\n' "\$app" "\$release"
+# A Steam session exports its own LD_LIBRARY_PATH, which can shadow the frame's
+# libraries. Record it, then rebuild the path with our directories first and the
+# inherited value after, so our libraries win but the session's own paths (the
+# Proton runtime, which holds the OpenXR loader) stay reachable.
+printf 'InheritedLD_LIBRARY_PATH=%s\n' "\${LD_LIBRARY_PATH:-unset}"
+inherited_library_path="\${LD_LIBRARY_PATH:-}"
+unset LD_LIBRARY_PATH
+# Directories that hold libraries the player needs but the system loader does not
+# find on its own (the OpenXR loader on the frame). Found at install time.
+if [ -n "\$library_directories" ]; then
+    export LD_LIBRARY_PATH="\$library_directories\${inherited_library_path:+:\$inherited_library_path}"
+elif [ -n "\$inherited_library_path" ]; then
+    export LD_LIBRARY_PATH="\$inherited_library_path"
+fi
+export XR_RUNTIME_JSON="\${XR_RUNTIME_JSON:-\$runtime}"
+# Session environment the player and its libraries expect. A Steam or desktop
+# launch may not provide all of these, so fill in the standard locations.
+export TMPDIR="\${TMPDIR:-\$state/tmp}"
+export TMP="\${TMP:-\$TMPDIR}"
+export TEMP="\${TEMP:-\$TMPDIR}"
+mkdir -p -- "\$TMPDIR"
+export MESA_SHADER_CACHE_DIR="\${MESA_SHADER_CACHE_DIR:-\$cache/mesa}"
+export MESA_GLSL_CACHE_DIR="\${MESA_GLSL_CACHE_DIR:-\$cache/mesa}"
+mkdir -p -- "\$MESA_SHADER_CACHE_DIR"
+if [ -z "\${XDG_RUNTIME_DIR:-}" ] && [ -d "/run/user/\$(id -u)" ]; then
+    export XDG_RUNTIME_DIR="/run/user/\$(id -u)"
+fi
+if [ -z "\${DISPLAY:-}" ] && [ -z "\${WAYLAND_DISPLAY:-}" ]; then
+    export DISPLAY=:0
+fi
+printf 'XDG_RUNTIME_DIR=%s TMPDIR=%s DISPLAY=%s WAYLAND_DISPLAY=%s\n' \
+    "\${XDG_RUNTIME_DIR:-unset}" "\$TMPDIR" "\${DISPLAY:-unset}" "\${WAYLAND_DISPLAY:-unset}"
+# The VPU is what makes hardware decoding possible. Log its state on every
+# launch, so a denied or missing node is visible in the log rather than only as a
+# decoder failure later.
+vpu_nodes=\$(ls /dev/video* 2>/dev/null || true)
+if [ -z "\$vpu_nodes" ]; then
+    printf 'VPU nodes: none (no /dev/video*; hardware decoding will fail)\n'
+else
+    for node in \$vpu_nodes; do
+        if [ -r "\$node" ] && [ -w "\$node" ]; then
+            printf 'VPU %s readable\n' "\$node"
+        else
+            printf 'VPU %s NOT readable, hardware decoding will fail\n' "\$node"
+        fi
+    done
+fi
+# Steam sets ENABLE_GAMESCOPE_WSI=1 when it launches a game on a gamescope
+# session (the Steam Frame and Steam Deck). Only disable the gamescope WSI layer
+# when Steam has not asked for it, so the two never contradict each other.
+if [ -z "\${ENABLE_GAMESCOPE_WSI:-}" ]; then
+    export DISABLE_GAMESCOPE_WSI=1
+fi
+# SteamVR reads its path registry and writes its logs. Only point these at our
+# own locations when the registry already exists there; otherwise leave SteamVR
+# to its own defaults, because an override that names a missing file makes the
+# OpenXR loader skip the runtime ("negotiation failed").
+if [ -z "\${VR_PATHREG_OVERRIDE:-}" ]; then
+    if [ -f "\$config/openvrpaths.vrpath" ]; then
+        export VR_PATHREG_OVERRIDE="\$config/openvrpaths.vrpath"
+    elif [ -f "\$HOME/.config/openvr/openvrpaths.vrpath" ]; then
+        export VR_PATHREG_OVERRIDE="\$HOME/.config/openvr/openvrpaths.vrpath"
+    fi
+fi
+if [ -z "\${VR_LOG_PATH:-}" ] && [ -d "\$state/steamvr" ]; then
+    export VR_LOG_PATH="\$state/steamvr"
+fi
+# Steam sets these when it launches the game. Set them here too, so the OpenVR
+# overlay and the Steam runtime see the same AppID when the player is started
+# from the desktop entry or a terminal. An existing value always wins.
+if [ -n "\$appid" ]; then
+    export SteamAppId="\${SteamAppId:-\$appid}"
+    export SteamGameId="\${SteamGameId:-\$appid}"
+fi
+exec "\$release/launch.sh" "\$@"
+LAUNCHER
+    chmod 755 "$temporary"
+    mv -f -- "$temporary" "$launcher"
+}
+
+write_entry() {
+    ensure_directory "$entry_dir"
+    refuse_linked_target "$entry"
+    temporary=$(fresh_temporary_for "$entry")
+    cat >"$temporary" <<ENTRY
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=$APP_NAME
+Comment=Native VR image and video player
+Exec="$launcher" %f
+TryExec=$launcher
+Path=$app/current
+Icon=$icon
+Terminal=false
+StartupNotify=false
+Categories=AudioVideo;Video;Player;
+MimeType=$MEDIA_MIME_TYPES;
+ENTRY
+    mv -f -- "$temporary" "$entry"
+}
+
+# The media types the player opens, matching cpp/source/media_file_type.hpp.
+# Used both for the desktop entry's MimeType and for the default-handler
+# registration, so the two can never drift apart.
+MEDIA_MIME_TYPES='video/mp4;video/x-matroska;video/x-msvideo;video/quicktime;video/webm;video/x-m4v;video/mpeg;video/mp2t;video/x-ms-wmv;video/x-flv;video/ogg;video/dvd;image/png;image/apng;image/jpeg;image/bmp;image/webp;image/gif;image/tiff'
+
+mimeapps_file() {
+    printf '%s' "${XDG_CONFIG_HOME:-$HOME/.config}/mimeapps.list"
+}
+
+# Register LumaFrameVR as the default handler for its media types, so clicking a
+# video or image in the file manager opens the player. The associations are
+# written straight into mimeapps.list: xdg-mime drops its very first write when
+# it has to create the file, which silently loses one type.
+register_file_associations() {
+    file=$(mimeapps_file)
+    # mimeapps.list lives in the user's config directory, which is outside the
+    # install prefix, so it is created directly rather than through
+    # ensure_directory (which guards the prefix).
+    mkdir -p -- "$(dirname -- "$file")"
+    refuse_linked_target "$file"
+    entry_name=$(basename -- "$entry")
+    temporary=$(fresh_temporary_for "$file")
+    [ -f "$file" ] && cp -f -- "$file" "$temporary" || : >"$temporary"
+    # Set each type in [Default Applications], replacing any existing value for
+    # that type and keeping every other line untouched.
+    awk -v name="$entry_name" -v types="$MEDIA_MIME_TYPES" '
+        BEGIN { count = split(types, wanted, ";"); for (i = 1; i <= count; i++) if (wanted[i] != "") want[wanted[i]] = 1 }
+        /^\[/ { if (section == "defaults" && !done) { emit(); done = 1 } section = ($0 == "[Default Applications]") ? "defaults" : "other"; print; next }
+        section == "defaults" {
+            split($0, parts, "=")
+            if (length(parts) >= 2 && (parts[1] in want)) { print parts[1] "=" name; delete want[parts[1]]; next }
+            print; next
+        }
+        { print }
+        END {
+            if (section == "defaults" && !done) { emit(); done = 1 }
+            if (!done) { print ""; print "[Default Applications]"; emit() }
+        }
+        function emit(  key) { for (key in want) print key "=" name }
+    ' "$temporary" >"$temporary.new"
+    mv -f -- "$temporary.new" "$temporary"
+    mv -f -- "$temporary" "$file"
+    refresh_desktop_database
+    say "  Registered as the default player for video and image files."
+}
+
+# Remove only the associations that point at this installation, leaving any
+# other handler the user chose in place.
+unregister_file_associations() {
+    file=$(mimeapps_file)
+    [ -f "$file" ] || return 0
+    entry_name=$(basename -- "$entry")
+    grep -qF "$entry_name" "$file" || return 0
+    temporary=$(fresh_temporary_for "$file")
+    # Drop our desktop file from the value lists; keep every other handler.
+    awk -v name="$entry_name" '
+        /^\[/ { print; next }
+        {
+            line = $0
+            if (index(line, name) == 0) { print; next }
+            split(line, parts, "=")
+            if (length(parts) < 2) { next }
+            count = split(parts[2], values, ";")
+            kept = ""
+            for (i = 1; i <= count; i++) {
+                if (values[i] == "" || values[i] == name) continue
+                kept = kept values[i] ";"
+            }
+            if (kept == "") next
+            print parts[1] "=" kept
+        }
+    ' "$file" >"$temporary"
+    mv -f -- "$temporary" "$file"
+    refresh_desktop_database
+}
+
+write_icon() {
+    ensure_directory "$(dirname -- "$icon")"
+    refuse_linked_target "$icon"
+    temporary=$(fresh_temporary_for "$icon")
+    cp -f -- "$release/branding/icon.png" "$temporary"
+    mv -f -- "$temporary" "$icon"
+}
+
+path_profile() {
+    printf '%s' "${HOME}/.profile"
+}
+
+path_entry() {
+    printf '%s' "export PATH=\"$prefix/bin:\$PATH\""
+}
+
+on_path() {
+    printf '%s' ":$PATH:" | grep -q ":$prefix/bin:" && return 0
+    return 1
+}
+
+add_to_path() {
+    profile=$(path_profile)
+    if [ -f "$profile" ] && grep -qF "$PATH_MARKER" "$profile"; then
+        return 0
+    fi
+    touch "$profile"
+    {
+        printf '\n%s\n' "$PATH_MARKER"
+        path_entry
+    } >>"$profile"
+}
+
+remove_from_path() {
+    profile=$(path_profile)
+    [ -f "$profile" ] || return 0
+    grep -qF "$PATH_MARKER" "$profile" || return 0
+    temporary=$(fresh_temporary_for "$profile")
+    awk -v marker="$PATH_MARKER" 'index($0, marker) { skip = 2; next } skip > 0 { skip--; next } { print }' \
+        "$profile" >"$temporary"
+    mv -f -- "$temporary" "$profile"
+}
+
+refresh_desktop_database() {
+    command -v update-desktop-database >/dev/null 2>&1 &&
+        update-desktop-database "$entry_dir" >/dev/null 2>&1 || true
+    command -v kbuildsycoca6 >/dev/null 2>&1 && kbuildsycoca6 >/dev/null 2>&1 || true
+    command -v kbuildsycoca5 >/dev/null 2>&1 && kbuildsycoca5 >/dev/null 2>&1 || true
+    return 0
+}
+
+write_record() {
+    ensure_directory "$record_dir"
+    refuse_linked_target "$record"
+    {
+        printf 'installer %s\n' "$VERSION"
+        printf 'prefix %s\n' "$prefix"
+        printf 'release %s\n' "$VERSION"
+        printf 'payload_sha256 %s\n' "$PAYLOAD_SHA256"
+        printf 'payload_bytes %s\n' "$(payload_size)"
+        printf 'installed_at %s\n' "$(date -Iseconds)"
+        printf 'created %s\n' "$launcher"
+        printf 'created %s\n' "$entry"
+        printf 'created %s\n' "$icon"
+        printf 'created %s\n' "$app"
+        printf 'created %s\n' "$record"
+        printf 'user_data %s\n' "$config_dir"
+        printf 'user_data %s\n' "$cache_dir"
+    } >"$temporary"
+    mv -f -- "$temporary" "$record"
+}
+
+abandon_release() {
+    rm -rf -- "$staging"
+    rmdir -- "$releases" 2>/dev/null || true
+    rmdir -- "$app" 2>/dev/null || true
+    die "$1"
+}
+
+# Point $current at the release this installer carries, replacing the link itself.
+#
+# mv is the wrong tool here: when $current already exists as a symlink to a directory,
+# "mv newlink current" moves newlink into that directory instead of replacing the link, so
+# the previous release stays in place and an update looks successful while the old version
+# boots. That is exactly what it did.
+point_current() {
+    if [ -d "$current" ] && [ ! -L "$current" ]; then
+        die "refusing to replace the directory $current with a symlink"
+    fi
+    ln -sfn "releases/$VERSION" "$current"
+    pointed=$(readlink "$current" 2>/dev/null || true)
+    [ "$pointed" = "releases/$VERSION" ] ||
+        die "could not point $current at releases/$VERSION (it is '${pointed:-nothing}')"
+}
+
+install_release() {
+    staging=$app/.staging.$$
+    ensure_directory "$staging"
+    payload_stream | tar -xzf - --no-same-owner -C "$staging" ||
+        abandon_release "could not unpack the release payload"
+    unpacked=$staging/$RELEASE_NAME
+    [ -d "$unpacked" ] || abandon_release "the payload does not contain $RELEASE_NAME"
+    check_release_tree "$unpacked" || abandon_release "the payload is damaged or incomplete"
+    ensure_directory "$releases"
+    refuse_linked_target "$release"
+    if [ -d "$release" ]; then rm -rf -- "$release"; fi
+    mv -- "$unpacked" "$release"
+    rm -rf -- "$staging"
+    point_current
+    [ -x "$release/lumaframevr" ] || die "the unpacked application is not executable"
+}
+
+runtime_json() {
+    if [ -n "${XR_RUNTIME_JSON:-}" ]; then
+        printf '%s' "$XR_RUNTIME_JSON"
+    elif [ -f /opt/steamvr/steamxr_linuxarm64.json ]; then
+        printf '%s' /opt/steamvr/steamxr_linuxarm64.json
+    else
+        printf '%s' /usr/share/openxr/1/openxr_steamvr.json
+    fi
+}
+
+install_helper_copy() {
+    source_helper=$SCRIPT_DIR/steam_shortcut.py
+    [ -f "$source_helper" ] || return 0
+    [ "$source_helper" = "$record_dir/steam_shortcut.py" ] && return 0
+    ensure_directory "$record_dir"
+    refuse_linked_target "$record_dir/steam_shortcut.py"
+    cp -f -- "$source_helper" "$record_dir/steam_shortcut.py"
+    chmod 644 "$record_dir/steam_shortcut.py"
+}
+
+helper_path() {
+    for candidate in "$SCRIPT_DIR/steam_shortcut.py" "$record_dir/steam_shortcut.py" \
+                     "$release/steam_shortcut.py"; do
+        [ -f "$candidate" ] && { printf '%s' "$candidate"; return 0; }
+    done
+    if [ "${HELPER_OFFSET:-0}" -gt 0 ]; then
+        mkdir -p -- "$state_dir"
+        tail -c +$((HELPER_OFFSET + 1)) "$0" >"$state_dir/steam_shortcut.py" || return 1
+        printf '%s' "$state_dir/steam_shortcut.py"
+        return 0
+    fi
+    return 1
+}
+
+python_binary() {
+    for candidate in python3 /usr/bin/python3; do
+        command -v "$candidate" >/dev/null 2>&1 && { printf '%s' "$candidate"; return 0; }
+    done
+    return 1
+}
+
+steam_add() {
+    helper=$(helper_path) || { warn "the Steam shortcut helper is missing"; return 1; }
+    python=$(python_binary) || { warn "python3 is required for the Steam shortcut step"; return 1; }
+    "$python" -B "$helper" add --exec "$launcher" --start-dir "$app/current" --icon "$icon"
+}
+
+steam_remove() {
+    helper=$(helper_path) || { warn "the Steam shortcut helper is missing"; return 1; }
+    python=$(python_binary) || { warn "python3 is required for the Steam shortcut step"; return 1; }
+    "$python" -B "$helper" remove --exec "$launcher"
+}
+
+steam_installed() {
+    helper=$(helper_path) || return 1
+    python=$(python_binary) || return 1
+    "$python" -B "$helper" status --exec "$launcher" >/dev/null 2>&1
+}
+
+# The Steam AppID is deterministic (a CRC of the launcher path and the name), so
+# it can be computed without touching Steam. The launcher bakes it in so
+# SteamAppId/SteamGameId are set even when the player starts outside Steam.
+steam_appid() {
+    helper=$(helper_path) || return 0
+    python=$(python_binary) || return 0
+    "$python" -B "$helper" appid --exec "$launcher" 2>/dev/null || true
+}
+
+plan_install_lines() {
+    if update_target; then
+        say "Would update $APP_NAME in $prefix: $(installed_version) -> $VERSION (in place, settings kept):"
+    elif [ -n "$(installed_version)" ]; then
+        say "Would reinstall $APP_NAME $VERSION in $prefix ($(describe_installed), in place):"
+    else
+        say "Would install $APP_NAME $VERSION into $prefix:"
+    fi
+    say "  release   $release"
+    say "  launcher  $launcher"
+    say "  entry     $entry"
+    say "  icon      $icon"
+    say "  record    $record"
+    say "Payload: $PAYLOAD_NAME ($(payload_size) bytes)"
+}
+
+ask_questions() {
+    [ "$WITH_STEAM" = ask ] || return 0
+    if [ "$ASSUME_YES" = yes ]; then WITH_STEAM=no; return 0; fi
+    if ui_available; then
+        if ui_confirm "Also add $APP_NAME to Steam as a non-Steam game?" yes; then
+            WITH_STEAM=yes
+        else
+            WITH_STEAM=no
+        fi
+    elif [ -t 0 ] && [ -t 1 ]; then
+        printf 'Also add %s to Steam as a non-Steam game? [y/N] ' "$APP_NAME"
+        read -r answer || answer=
+        case $answer in [Yy]*) WITH_STEAM=yes ;; *) WITH_STEAM=no ;; esac
+    else
+        WITH_STEAM=no
+    fi
+}
+
+require_payload() {
+    payload_available || die "no release payload found; run the installer bundle or pass --payload FILE"
+}
+
+do_install() {
+    [ -n "${HOME:-}" ] || die "HOME is not set"
+    require_payload
+    [ -d "$HOME" ] || die "HOME does not exist: $HOME"
+    if [ -e "$release" ] && ! record_versions >/dev/null 2>&1; then
+        die "$release already exists but was not created by this installer; move it away first"
+    fi
+    require_space
+    verify_payload
+    previous=$(installed_version)
+    if [ -n "$previous" ] && [ "$previous" != "$VERSION" ]; then
+        say "Updating $APP_NAME in $prefix: $previous -> $VERSION ..."
+        say "  Settings, thumbnails and the Steam shortcut are kept."
+    elif [ -n "$previous" ]; then
+        say "Updating $APP_NAME $VERSION in $prefix (already at $previous) ..."
+    else
+        say "Installing $APP_NAME $VERSION into $prefix ..."
+    fi
+    install_release
+    write_launcher
+    write_entry
+    write_icon
+    refresh_desktop_database
+    register_file_associations
+    install_helper_copy
+    write_record
+    if [ -n "$previous" ] && [ "$previous" != "$VERSION" ]; then
+        log_line "updated $previous to $VERSION in $prefix"
+    else
+        log_line "installed $VERSION into $prefix"
+    fi
+    # An update is only an update if the launcher really starts the new release. Check it
+    # here, where the answer is still cheap, instead of leaving the old one to boot later.
+    pointed=$(readlink "$current" 2>/dev/null || true)
+    case $pointed in
+        *"$VERSION") say "  $current points at $pointed" ;;
+        *) warn "warning: $current points at '${pointed:-nothing}' rather than releases/$VERSION."
+           warn "         The launcher would start the wrong release. Run --repair, and report this." ;;
+    esac
+    if [ -n "$previous" ] && [ "$previous" != "$VERSION" ]; then
+        say "  The previous release (releases/$previous) is kept on disk for rollback; nothing points at it."
+    fi
+    steam_ok=no
+    if [ "$WITH_STEAM" = yes ]; then
+        if steam_add; then steam_ok=yes; else
+            warn "warning: the Steam shortcut could not be added; the install itself is complete."
+            warn "Add it later with: \"${script_path:-$0}\" --steam-add"
+        fi
+    fi
+    say ""
+    say "$APP_NAME $VERSION installed."
+    say "  Start it from your application menu, or run: $launcher [file]"
+    if on_path; then
+        :
+    elif [ "$ADD_TO_PATH" = yes ]; then
+        add_to_path
+        say "  Added $prefix/bin to PATH in $(path_profile) (takes effect in new shells)."
+    else
+        say "  Note: $prefix/bin is not in your PATH. Add it to run the command by name:"
+        say "    $(path_entry)"
+        say "  Or re-run with --add-to-path to have the installer do it."
+    fi
+    if [ "$steam_ok" = yes ]; then
+        say "  A Steam shortcut was added (non-Steam game)."
+        say "  SteamVR may need a restart before it appears under Non-Steam Games: it reads"
+        say "  that list when it starts, and rewrites it when it exits."
+    fi
+    if [ "$WITH_STEAM" = no ]; then say "  Add a Steam shortcut any time with: \"${script_path:-$0}\" --steam-add"; fi
+}
+
+do_repair() {
+    record_versions >/dev/null 2>&1 ||
+        die "no installation found in $prefix (nothing to repair); run --install"
+    say "Repairing $APP_NAME in $prefix ..."
+    if [ -d "$release" ] && check_release_tree "$release"; then
+        say "  release files verified"
+    else
+        require_payload
+        verify_payload
+        say "  reinstalling the release payload ..."
+        install_release
+    fi
+    write_launcher
+    write_entry
+    write_icon
+    refresh_desktop_database
+    register_file_associations
+    install_helper_copy
+    write_record
+    point_current
+    say "  $current points at releases/$VERSION"
+    log_line "repaired $prefix"
+    say "Repair finished."
+}
+
+do_uninstall() {
+    record_versions >/dev/null 2>&1 || die "no installation found in $prefix (nothing to remove)"
+    if [ "$KEEP_STEAM" = no ] && steam_installed >/dev/null 2>&1; then
+        say "Removing the Steam shortcut ..."
+        steam_remove || warn "warning: the Steam shortcut could not be removed"
+    fi
+    say "Removing $APP_NAME from $prefix ..."
+    unregister_file_associations
+    # Remove exactly what the record lists, plus the fixed paths, so a record
+    # from an older layout is still cleaned up. Every path is checked to sit
+    # inside the prefix first.
+    remove_path() {
+        [ -e "$1" ] || [ -L "$1" ] || return 0
+        inside_prefix "$1" || { warn "refusing to remove $1"; return 0; }
+        rm -rf -- "$1"
+    }
+    if [ -f "$record" ]; then
+        while IFS= read -r line; do
+            case $line in
+                created\ *) remove_path "${line#created }" ;;
+            esac
+        done <"$record"
+    fi
+    for path in "$launcher" "$entry" "$icon" "$app"; do
+        remove_path "$path"
+    done
+    refresh_desktop_database
+    if [ "$PURGE" = yes ]; then
+        for path in "$config_dir" "$cache_dir" "$state_dir"; do
+            [ -e "$path" ] || continue
+            say "  removing saved data $path"
+            rm -rf -- "$path"
+        done
+    fi
+    remove_from_path
+    rm -f -- "$record" "$record_dir/steam_shortcut.py"
+    rmdir -- "$record_dir" 2>/dev/null || true
+    # The state directory holds only installer artifacts (the helper copy and the
+    # log), not user data, so it goes with the uninstall. Settings and thumbnails
+    # live in config_dir and cache_dir and are kept unless --purge is given.
+    rm -rf -- "$state_dir"
+    say "Uninstalled."
+    if [ "$PURGE" = no ]; then
+        say "Saved settings and thumbnails were kept in:"
+        say "  $config_dir"
+        say "  $cache_dir"
+        say "Remove them as well with: $0 --uninstall --purge"
+    fi
+}
+
+do_steam_add() {
+    record_versions >/dev/null 2>&1 || die "install $APP_NAME first (no installation found in $prefix)"
+    steam_add
+    say "Added $APP_NAME to Steam as a non-Steam game."
+}
+
+do_steam_remove() {
+    steam_remove
+    say "Removed the $APP_NAME Steam shortcut."
+}
+
+ui_dialog() {
+    for candidate in kdialog zenity; do
+        command -v "$candidate" >/dev/null 2>&1 && { printf '%s' "$candidate"; return 0; }
+    done
+    return 1
+}
+
+ui_available() {
+    [ "$UI" = no ] && return 1
+    [ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ] || return 1
+    ui_dialog >/dev/null 2>&1
+}
+
+ui_message() {
+    case $(ui_dialog) in
+        kdialog) kdialog --title "$APP_NAME installer" --msgbox "$1" ;;
+        zenity) zenity --title "$APP_NAME installer" --info --text "$1" ;;
+    esac
+}
+
+ui_confirm() {
+    case $(ui_dialog) in
+        kdialog) kdialog --title "$APP_NAME installer" --yesno "$1" ;;
+        zenity) zenity --title "$APP_NAME installer" --question --text "$1" ;;
+    esac
+}
+
+ui_menu() {
+    # The first entry states what it will actually do: an existing installation is updated
+    # in place, it does not have to be uninstalled first.
+    if update_target; then
+        primary="Update $APP_NAME to $VERSION (installed: $(installed_version))"
+    elif [ -n "$(installed_version)" ]; then
+        primary="Reinstall $APP_NAME $VERSION (already at $(installed_version))"
+    else
+        primary="Install $APP_NAME $VERSION"
+    fi
+    case $(ui_dialog) in
+        kdialog) kdialog --title "$APP_NAME installer" --menu "$1" \
+            1 "$primary" 2 "Repair the installation" \
+            3 "Add a Steam shortcut" 4 "Remove the Steam shortcut" \
+            5 "Uninstall $APP_NAME" 6 "Quit" ;;
+        zenity) zenity --title "$APP_NAME installer" --list --text "$1" \
+            --column Action "$primary" "Repair the installation" \
+            "Add a Steam shortcut" "Remove the Steam shortcut" "Uninstall $APP_NAME" "Quit" ;;
+    esac
+}
+
+run_ui() {
+    choice=$(ui_menu "Choose an action for $APP_NAME. Installing, updating, repairing and uninstalling below $prefix never needs root.") || return 0
+    case $choice in
+        1*|"Install"*|"Update"*|"Reinstall"*) WITH_STEAM=ask; ask_questions; do_install; ui_message "$APP_NAME $VERSION is installed. If a Steam shortcut was added, restart SteamVR to see it under Non-Steam Games." ;;
+        2*|"Repair"*) do_repair; ui_message "Repair finished." ;;
+        3*|"Add"*) do_steam_add; ui_message "Steam shortcut added." ;;
+        4*|"Remove"*) do_steam_remove; ui_message "Steam shortcut removed." ;;
+        5*|"Uninstall"*)
+            if ui_confirm "Remove $APP_NAME from $prefix? Saved settings and thumbnails are kept." yes; then
+                do_uninstall
+                ui_message "$APP_NAME was uninstalled."
+            fi ;;
+        *) exit 0 ;;
+    esac
+}
+
+resolve_paths
+mkdir -p -- "$state_dir"
+# $0 may be a relative path, or whatever the caller typed on the command line. Resolve it
+# once so the hints this installer prints can be copied and run as they are.
+script_path=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd -P)/$(basename -- "$0")
+
+case ${ACTION:-} in
+    plan) plan_install_lines ;;
+    steam-add) do_steam_add ;;
+    steam-remove) do_steam_remove ;;
+    repair) do_repair ;;
+    uninstall) do_uninstall ;;
+    install|update) ask_questions; do_install ;;
+    "")
+        if ui_available; then run_ui; else ask_questions; do_install; fi ;;
+    *) usage >&2; exit 1 ;;
+esac
+exit 0

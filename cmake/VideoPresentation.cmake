@@ -1,0 +1,4 @@
+add_library(lumaframevr_presentation cpp/presentation/video_alignment.cpp cpp/presentation/video_hints.cpp cpp/presentation/remembered_video_settings.cpp cpp/presentation/video_view_parameters.cpp)
+target_include_directories(lumaframevr_presentation PUBLIC cpp/presentation)
+target_link_libraries(lumaframevr_presentation PUBLIC lumaframevr_controller_math)
+target_compile_options(lumaframevr_presentation PRIVATE -Wall -Wextra -Wpedantic -Werror)

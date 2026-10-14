@@ -1,0 +1,6 @@
+pkg_check_modules(OPENXR REQUIRED IMPORTED_TARGET openxr)
+add_library(lumaframevr_openxr cpp/headset/openxr_swapchain_acquire.cpp cpp/headset/openxr_swapchain.cpp cpp/headset/openxr_runtime.cpp cpp/headset/openxr_passthrough.cpp cpp/headset/openxr_passthrough_capability.cpp cpp/headset/openxr_graphics.cpp cpp/headset/openxr_session.cpp cpp/headset/openxr_frame.cpp cpp/headset/openxr_composition.cpp cpp/headset/openxr_input.cpp cpp/headset/openxr_input_poll.cpp cpp/headset/controller_bindings.cpp cpp/headset/openxr_panel.cpp cpp/headset/panel_image_upload.cpp)
+target_include_directories(lumaframevr_openxr PUBLIC cpp/headset)
+target_compile_definitions(lumaframevr_openxr PUBLIC XR_USE_GRAPHICS_API_VULKAN)
+target_link_libraries(lumaframevr_openxr PUBLIC lumaframevr_vulkan PkgConfig::OPENXR lumaframevr_ui lumaframevr_controller_math)
+target_compile_options(lumaframevr_openxr PRIVATE -Wall -Wextra -Wpedantic -Werror)

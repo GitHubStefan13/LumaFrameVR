@@ -1,0 +1,12 @@
+#pragma once
+#include "assets/transport_information.hpp"
+#include "assets/transport_minimize.hpp"
+#include "assets/transport_move.hpp"
+#include "assets/transport_mute.hpp"
+#include "assets/transport_next.hpp"
+#include "assets/transport_pause.hpp"
+#include "assets/transport_play.hpp"
+#include "assets/transport_previous.hpp"
+#include "assets/transport_rotation.hpp"
+#include "assets/transport_settings.hpp"
+#include "assets/transport_speaker.hpp"

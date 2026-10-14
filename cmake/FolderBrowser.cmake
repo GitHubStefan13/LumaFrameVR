@@ -1,0 +1,5 @@
+find_package(Threads REQUIRED)
+add_library(lumaframevr_browser cpp/browser/folder_listing.cpp cpp/browser/folder_browser.cpp cpp/browser/folder_navigation.cpp cpp/browser/browser_places.cpp)
+target_include_directories(lumaframevr_browser PUBLIC cpp/browser)
+target_link_libraries(lumaframevr_browser PUBLIC lumaframevr_i18n PRIVATE Threads::Threads)
+target_compile_options(lumaframevr_browser PRIVATE -Wall -Wextra -Wpedantic -Werror)

@@ -1,0 +1,76 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 24,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "native",
+      "displayName": "Native x86_64 (development host)",
+      "description": "Build and test on this machine. Not a release target.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "native-debug",
+      "displayName": "Native x86_64 Debug",
+      "description": "Debug build on this machine.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "frame-aarch64-gnu",
+      "displayName": "Steam Frame (AArch64 cross, GNU)",
+      "description": "Cross build for the Steam Frame with the distribution GNU cross toolchain. Needs gcc-aarch64-linux-gnu and the AArch64 SDK at ~/lumaframevr-sdk; see docs/BUILD.md.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build-arm64-gnu",
+      "toolchainFile": "${sourceDir}/cmake/SteamFrameAarch64Gnu.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_PREFIX_PATH": "$env{HOME}/lumaframevr-sdk"
+      },
+      "environment": {
+        "PKG_CONFIG_LIBDIR": "$env{HOME}/lumaframevr-sdk/pkgconfig",
+        "PKG_CONFIG_PATH": ""
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "native",
+      "configurePreset": "native"
+    },
+    {
+      "name": "native-debug",
+      "configurePreset": "native-debug"
+    },
+    {
+      "name": "frame-aarch64-gnu",
+      "configurePreset": "frame-aarch64-gnu"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "native",
+      "configurePreset": "native",
+      "output": {
+        "outputOnFailure": true
+      }
+    },
+    {
+      "name": "frame-aarch64-gnu",
+      "configurePreset": "frame-aarch64-gnu",
+      "output": {
+        "outputOnFailure": true
+      }
+    }
+  ]
+}

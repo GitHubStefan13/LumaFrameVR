@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: How to work on this project
+    url: https://github.com/GitHubStefan13/LumaFrameVR/blob/main/CONTRIBUTING.md
+    about: Build instructions, the coding guidelines and what a pull request needs.

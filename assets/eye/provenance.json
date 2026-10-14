@@ -1,0 +1,17 @@
+{
+  "project": "Lucide",
+  "revision": "55b9969b82776bb1412e29fc5cdc7535bfd69533",
+  "license": "ISC; retained upstream LICENSE also includes inherited Feather MIT notice",
+  "files": [
+    {
+      "file": "eye.svg",
+      "source_url": "https://raw.githubusercontent.com/lucide-icons/lucide/55b9969b82776bb1412e29fc5cdc7535bfd69533/icons/eye.svg",
+      "sha256": "5bf90197dd7629cad64a2e48d1186a71559deb6121207d10e3dc5b19ebaffdcf"
+    },
+    {
+      "file": "LICENSE",
+      "source_url": "https://raw.githubusercontent.com/lucide-icons/lucide/55b9969b82776bb1412e29fc5cdc7535bfd69533/LICENSE",
+      "sha256": "b495047bd93a9b06913511076f504daba17d5bbeb3e0650f3bb53a4220329c57"
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+add_library(lumaframevr_persistent_files
+  cpp/application/persistent_files.cpp
+  cpp/application/persistent_directory.cpp
+  cpp/application/persistent_publication.cpp)
+target_include_directories(lumaframevr_persistent_files PUBLIC cpp/application)
+target_compile_options(lumaframevr_persistent_files PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_library(lumaframevr_viewer_state cpp/application/viewer_preferences.cpp)
+target_link_libraries(lumaframevr_viewer_state PUBLIC lumaframevr_persistent_files)
+target_include_directories(lumaframevr_viewer_state PUBLIC cpp/application)
+target_compile_options(lumaframevr_viewer_state PRIVATE -Wall -Wextra -Wpedantic -Werror)
+add_library(lumaframevr_options cpp/application/application_options.cpp cpp/application/application_help.cpp)
+target_include_directories(lumaframevr_options PUBLIC cpp/application)
+target_link_libraries(lumaframevr_options PUBLIC lumaframevr_source lumaframevr_presentation lumaframevr_viewer_state)
+target_compile_options(lumaframevr_options PRIVATE -Wall -Wextra -Wpedantic -Werror)

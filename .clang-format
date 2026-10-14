@@ -1,0 +1,18 @@
+# Formatting for this project: the Google C++ Style Guide's rules, with the two choices this
+# codebase has always made, so the first run of the formatter does not fight the code.
+#
+#   clang-format -i $(git ls-files '*.cpp' '*.hpp' '*.c' '*.h')
+#
+# Naming is not a formatter's business and stays as it is; see docs/CPP-GUIDELINES.md.
+BasedOnStyle: Google
+IndentWidth: 4
+ContinuationIndentWidth: 8
+# 200 columns: this codebase writes long statements and reads fine that way. The limit is high enough
+# that it never reflows working code, and low enough to still catch an accidental wall of text.
+ColumnLimit: 200
+SpaceBeforeParens: Never
+SortIncludes: Never
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+DerivePointerAlignment: false
+PointerAlignment: Left
