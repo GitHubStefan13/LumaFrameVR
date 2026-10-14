@@ -1,0 +1,10 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Install LumaFrameVR (downloaded installer)
+Comment=Install the newest lumaframevr-desktop-installer-*.run in ~/Downloads
+Exec=sh -c 'set -- "$HOME"/Downloads/lumaframevr-desktop-installer-*.run; if [ ! -f "$1" ]; then echo "Download the installer .run into ~/Downloads first, then double-click this again."; sleep 15; exit 1; fi; exec sh "$(ls -t "$HOME"/Downloads/lumaframevr-desktop-installer-*.run | head -1)" --ui'
+Icon=utilities-file-archiver
+Terminal=true
+StartupNotify=false
+Categories=System;Settings;

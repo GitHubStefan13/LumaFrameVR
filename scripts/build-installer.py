@@ -30,7 +30,9 @@ SCRIPT_NAME = 'install.sh'
 # CMake drives from the project() version in CMakeLists.txt, so there is one place to bump.
 SCRIPT_TEMPLATE = 'install.sh.in'
 HELPER_NAME = 'steam_shortcut.py'
-ENTRY_NAME = 'install-lumaframevr.desktop'
+# Two entries, because there are two ways to install from a download: run install.sh in an
+# unpacked bundle, or run the .run a browser left in ~/Downloads without an execute bit.
+ENTRY_NAMES = ('install-lumaframevr.desktop', 'install-lumaframevr-run.desktop')
 SUMS_NAME = 'SHA256SUMS.txt'
 EM_AARCH64 = 0xB7
 
@@ -121,13 +123,14 @@ def write_zip(directory, path):
                 archive.write(file, file.relative_to(directory).as_posix())
 
 
-def build_directory(target, args, script, helper, entry, payload, data):
+def build_directory(target, args, script, helper, entries, payload, data):
     (target / 'payload').mkdir(parents=True, exist_ok=True)
     (target / SCRIPT_NAME).write_text(render_script(script, args.version, payload, {}), encoding='utf-8')
     (target / SCRIPT_NAME).chmod(0o755)
     (target / HELPER_NAME).write_bytes(helper.read_bytes())
     (target / HELPER_NAME).chmod(0o644)
-    (target / ENTRY_NAME).write_bytes(entry.read_bytes())
+    for entry in entries:
+        (target / entry.name).write_bytes(entry.read_bytes())
     (target / 'payload' / args.payload.name).write_bytes(data)
     (target / 'payload' / (args.payload.name + '.sha256')).write_text(
         payload['sha256'] + '  ' + args.payload.name + '\n', encoding='utf-8')
@@ -157,8 +160,8 @@ def build_directory(target, args, script, helper, entry, payload, data):
         'checksum and the update manifest `latest.json` that "Check for updates" reads - so that\n'
         'one directory holds everything to attach to a release.\n' % args.version,
         encoding='utf-8')
-    write_sums(target, [SCRIPT_NAME, HELPER_NAME, ENTRY_NAME, 'README.user.md',
-                        'payload/' + args.payload.name] + released)
+    write_sums(target, [SCRIPT_NAME, HELPER_NAME, 'README.user.md',
+                        'payload/' + args.payload.name] + [entry.name for entry in entries] + released)
     return released
 
 
@@ -168,8 +171,8 @@ def main():
         raise SystemExit('error: pass --output, --directory or both')
     script = args.source / 'installer' / SCRIPT_TEMPLATE
     helper = args.source / 'installer' / HELPER_NAME
-    entry = args.source / 'installer' / ENTRY_NAME
-    for required in (script, helper, entry):
+    entries = [args.source / 'installer' / name for name in ENTRY_NAMES]
+    for required in [script, helper] + entries:
         if not required.is_file():
             raise SystemExit('error: missing installer file ' + str(required))
     payload = inspect_payload(args.payload, args.version, not args.allow_unverified,
@@ -181,7 +184,7 @@ def main():
               'payload_bytes': payload['bytes'], 'payload_members': payload['members'],
               'release': payload['release']}
     if args.directory:
-        released = build_directory(args.directory, args, script, helper, entry, payload, data)
+        released = build_directory(args.directory, args, script, helper, entries, payload, data)
         record['directory'] = str(args.directory)
         record['release_assets'] = released
     if args.zip:

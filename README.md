@@ -24,7 +24,7 @@ The same list as text, so it stays searchable:
 - `cpp/tests/` the acceptance suite, plus the scripts that drive it and provision its media
 - `shaders/` GLSL shaders for the renderer
 - `cmake/` one module per subsystem: build targets, payload assembly and test registration
-- `installer/` `install.sh`, the Steam helper, the double-click bundle entry and its tests
+- `installer/` `install.sh`, the Steam helper, the double-click entries and their tests
 - `scripts/` build, cross-compile, verification, packaging, atlas and fixture helpers
 - `tests/` the updater's Python tests
 - `docs/` architecture, build, install, packaging, localization and the C++ guidelines
@@ -80,6 +80,50 @@ From a directory bundle, run `./install.sh` instead. Actions: `--install` (the d
 `--ui` / `--no-ui`, `--steam` / `--no-steam` (it asks by default), `--yes`, `--prefix DIR`,
 `--payload FILE`, `--add-to-path`, `--help`. [docs/INSTALLATION.md](docs/INSTALLATION.md) has
 the layout, the checksums and the repair path.
+
+### On the Steam Frame: terminal, SSH, or the desktop's browser
+
+All three routes install the same release for the current user. None needs root, and nothing is
+written outside `~/.local`, `~/.config/lumaframevr` and `~/.cache/lumaframevr`.
+
+**In Desktop Mode's terminal.** Switch to Desktop Mode, open the terminal (Konsole), and paste the
+one line from above:
+
+```sh
+bash -o pipefail -c 'curl -fsSL https://raw.githubusercontent.com/GitHubStefan13/LumaFrameVR/main/get-lumaframevr.sh | sh'
+```
+
+It reads the version from this repository, downloads that release's installer, checks it against the
+checksum published beside it and installs it, asking about the Steam shortcut. `LUMAFRAMEVR_NO_STEAM=1`
+in front skips that question, and `LUMAFRAMEVR_KEEP=1` keeps the downloaded file. `bash -o pipefail`
+rather than a bare `| sh` is deliberate: without it a failed download installs nothing and still
+reports success.
+
+**Over SSH, with developer mode on.** Turn developer mode on in the frame's settings, which also
+starts its SSH server, and then from another machine — the same access `scripts/make-aarch64-sdk.sh`
+uses, `steamos@frame` by default:
+
+```sh
+ssh steamos@<frame> "bash -o pipefail -c 'curl -fsSL https://raw.githubusercontent.com/GitHubStefan13/LumaFrameVR/main/get-lumaframevr.sh | sh'"
+```
+
+Install as the user that runs the player rather than as root: the release goes into that user's home.
+
+**From the desktop's browser, without typing anything.** Download
+`lumaframevr-desktop-installer-<version>-<build>.run` from the release page with Chromium into
+`~/Downloads`, then double-click **Install LumaFrameVR (downloaded installer)** — the entry in
+`installer/`, shipped in the release's directory bundle — which hands the newest `*.run` in
+`~/Downloads` to `sh` for you. That matters because a browser writes the download without its
+execute bit, and a filesystem may be mounted `noexec`. KDE runs a `.desktop` only once the file is
+executable, so if double-clicking opens it as text, right-click → Properties → Permissions →
+*Is executable*. The same thing from a terminal is:
+
+```sh
+sh ~/Downloads/lumaframevr-desktop-installer-*.run --ui
+```
+
+Whichever route, the player needs an ARM64 SteamVR or OpenXR runtime that is already installed, and
+the installer downloads nothing else.
 
 ## Build
 
