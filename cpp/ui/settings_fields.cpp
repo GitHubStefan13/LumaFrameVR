@@ -8,9 +8,17 @@ namespace lumaframevr::ui {
 std::vector<SettingField> settings_fields(const VideoPresentation& p) {
     using K = SettingKind;
     std::vector<SettingField> fields{{K::projection}};
-    if(p.projection != Projection::flat)
+    // The Format row is the fisheye lens angle. For 180 and 360 it repeated the 180/360 choice the
+    // Projection row already offers, and because a headset panel shows its first rows, that pushed
+    // Stereo - the row that decides whether a VR video is a stereo pair - below the visible window:
+    // picking 180 looked like being stuck with whatever Stereo said. Stereo now sits directly under
+    // Projection in every projection, which is where the flat panel has always had it.
+    if(p.projection == Projection::fisheye)
         fields.push_back({K::format});
     fields.push_back({K::stereo});
+    // Full/Half stays a flat-only control: for 180 and 360 the renderer interprets side-by-side and
+    // top/bottom as the full arrangement of the two eyes, so offering the choice there would be a
+    // control that changes nothing.
     if(p.projection == Projection::flat && p.stereo != Stereo::mono)
         fields.push_back({K::stereo_format});
     fields.push_back({K::eye_order});

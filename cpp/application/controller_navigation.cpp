@@ -85,8 +85,8 @@ void Controller::update(const ControllerState& controls, const std::array<std::o
             activate(**found, now);
         else if(viewer_settings_open_) {
             const auto state = viewer_settings();
-            const std::array flags{state.show_hidden, state.save_thumbnails, state.remember_last_state};
-            if(viewer_setting_selected_ == 3)
+            const std::array flags{state.show_hidden, state.show_file_sizes, state.save_thumbnails, state.remember_last_state};
+            if(viewer_setting_selected_ == ui::viewer_setting_update_row)
                 start_viewer_update();
             else
                 set_viewer_setting(viewer_setting_selected_, !flags[viewer_setting_selected_]);
@@ -116,8 +116,8 @@ void Controller::navigate(const ControllerState& controls, double now) {
     const bool repeat = direction != last_direction_ || now >= next_navigation_;
     if(repeat && (direction[0] || direction[1])) {
         if(viewer_settings_open_) {
-            viewer_setting_selected_ = static_cast<std::size_t>(std::clamp(static_cast<int>(viewer_setting_selected_) + direction[1], 0, 3));
-            if(direction[0] && viewer_setting_selected_ == 3)
+            viewer_setting_selected_ = static_cast<std::size_t>(std::clamp(static_cast<int>(viewer_setting_selected_) + direction[1], 0, static_cast<int>(ui::viewer_setting_update_row)));
+            if(direction[0] && viewer_setting_selected_ == ui::viewer_setting_update_row)
                 ++update_page_;
             else if(direction[0])
                 set_viewer_setting(viewer_setting_selected_, direction[0] > 0);

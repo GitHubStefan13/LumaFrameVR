@@ -8,6 +8,13 @@ struct PreviewDetails {
     std::filesystem::path path;
     int width{}, height{};
     std::optional<double> duration;
+    // What decoding the preview frame learned about the file, shown beside the preview the way the
+    // information panel shows it for what is playing: the decoder's name, the sample depth, the frame
+    // rate and the bitrate. The size comes from the folder scan, so it costs no extra stat.
+    std::string codec;
+    int bits{};
+    double fps{}, bitrate_mbps{};
+    std::uintmax_t size{};
 };
 struct BrowserPreviewUpdate {
     bool changed{};

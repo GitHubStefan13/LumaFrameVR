@@ -123,7 +123,7 @@ void check(const std::filesystem::path& root) {
     controller.browser_action({{}, ui::BrowserAction::Settings, 0, {}, true, false});
     const auto click_update = [&] {
         for(const auto& target : ui::viewer_setting_targets(800, 800, lumaframevr::i18n::active().languages(), controller.viewer_settings()))
-            if(target.index == 5)
+            if(target.index == ui::viewer_setting_update)
                 controller.activate({app::PanelKind::browser, 800, 800, target.area.x + 1, target.area.y + 1, 0}, 0);
     };
     const auto poll_controller = [&] {

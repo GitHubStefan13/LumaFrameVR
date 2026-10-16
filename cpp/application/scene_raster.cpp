@@ -28,6 +28,7 @@ ui::Canvas draw_panel(const PanelSnapshot& app, const ScenePanel& panel, double 
         state.passthrough_enabled = app.passthrough_enabled;
         state.passthrough_supported = app.passthrough_supported;
         state.viewer_settings = app.viewer_settings.open;
+        state.show_file_sizes = app.viewer_settings.show_file_sizes;
         for(const auto& hit : app.hover)
             if(hit && hit->panel == PanelKind::browser)
                 state.hover = ui::browser_entry_at(1200, panel.pixels[1], app.browser.entries().size(), app.browser.selected(), app.view, hit->x, hit->y);
@@ -45,6 +46,23 @@ ui::Canvas draw_panel(const PanelSnapshot& app, const ScenePanel& panel, double 
             draw_text(canvas, 1216, 258, std::to_string(detail.width) + " x " + std::to_string(detail.height), {180, 180, 180, 255}, ui::FontStyle::secondary);
             if(detail.duration)
                 draw_text(canvas, 1216, 286, i18n::tr("preview.duration", {{"time", ui::timestamp(*detail.duration)}}), {180, 180, 180, 255}, ui::FontStyle::secondary);
+            // What the file is, beside what it looks like: the same facts the information panel gives
+            // for what is playing, for the file the preview belongs to.
+            int line = 314;
+            if(!detail.codec.empty()) {
+                draw_text(canvas, 1216, line, i18n::tr("preview.encoding", {{"codec", detail.codec}, {"bits", std::to_string(detail.bits)}}), {180, 180, 180, 255}, ui::FontStyle::secondary);
+                line += 28;
+            }
+            if(detail.fps > 0 || detail.bitrate_mbps > 0) {
+                std::ostringstream rate;
+                rate << std::fixed << std::setprecision(2) << detail.fps;
+                std::ostringstream bitrate;
+                bitrate << std::fixed << std::setprecision(1) << detail.bitrate_mbps;
+                draw_text(canvas, 1216, line, i18n::tr("preview.rate", {{"fps", rate.str()}, {"bitrate", bitrate.str()}}), {180, 180, 180, 255}, ui::FontStyle::secondary);
+                line += 28;
+            }
+            if(detail.size)
+                draw_text(canvas, 1216, line, i18n::tr("preview.size", {{"size", ui::file_size_text(detail.size)}}), {180, 180, 180, 255}, ui::FontStyle::secondary);
         }
         if(!app.error.empty())
             draw_text(canvas, 216, panel.pixels[1] - 30, ui::fit_label(app.error, 78), {255, 160, 130, 255}, ui::FontStyle::secondary);

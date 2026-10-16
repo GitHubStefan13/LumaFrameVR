@@ -93,10 +93,17 @@ void VulkanVideoImage::import_dma() {
                      static_cast<unsigned long long>(requirements.size), static_cast<unsigned long long>(source.size), source.width, source.height, static_cast<unsigned>(source.format),
                      static_cast<unsigned long long>(source.modifier), static_cast<unsigned long>(source.pitches[0]), static_cast<unsigned long>(source.offsets[0]),
                      static_cast<unsigned long>(source.pitches[1]), static_cast<unsigned long>(source.offsets[1]));
+        std::fprintf(stderr, "Decoder DMA-BUF: the described planes end at %llu, past the end of the buffer\n", static_cast<unsigned long long>(dma_buf_described_extent(source)));
         std::fprintf(stderr,
                      "Decoder: this file cannot go through the VPU on this driver at this size. "
                      "Play it with LUMAFRAMEVR_DECODER=software, which skips the VPU for the run.\n");
         throw std::runtime_error("Decoder allocation smaller than Vulkan image requirements");
+    }
+    if(requirements.size > source.size) {
+        // Proceeding on a negotiated layout: say so, with both numbers, so a wrong picture has a
+        // line to attribute it to rather than a silent relaxation.
+        std::fprintf(stderr, "Decoder DMA-BUF: Vulkan asks for %llu of a %llu buffer; the described planes end at %llu, so the samples are inside it and the negotiated layout is imported\n",
+                     static_cast<unsigned long long>(requirements.size), static_cast<unsigned long long>(source.size), static_cast<unsigned long long>(dma_buf_described_extent(source)));
     }
     auto get_fd = reinterpret_cast<PFN_vkGetMemoryFdPropertiesKHR>(vkGetDeviceProcAddr(device_->handle(), "vkGetMemoryFdPropertiesKHR"));
     if(!get_fd)

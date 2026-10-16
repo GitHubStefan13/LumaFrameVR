@@ -14,10 +14,20 @@
 # and every file in it exercises something the player has code for: VR 180 in mono
 # and top-bottom stereo, H.264, 4K HEVC and 4K VP9, the MP4, WebM and MKV containers,
 # Opus audio, and a stream with no audio at all. Formats the player refuses before it
-# opens a decoder (AV1, AVS3, VVC, ProRes, 10-bit above the decoder policy) are not
-# downloaded: they test the refusal, not the pipeline. The 360-degree clips this set
-# once carried come from a dataset of tens of gigabytes, which is far outside the
-# budget, so a 360 projection sample has to be supplied by hand.
+# opens a decoder (AVS3, VVC, ProRes, 12-bit, and the ten-bit layouts the software
+# packer has no shift for) are not downloaded: they test the refusal, not the
+# pipeline. The 360-degree clips this set once carried come from a dataset of tens of
+# gigabytes, which is far outside the budget, so a 360 projection sample has to be
+# supplied by hand.
+#
+# Two clips are generated rather than downloaded, by make-test-fixtures.sh: the two
+# the suite reads, and a ten-bit one - which is the sample to play first when the
+# ten-bit path is checked on the frame.
+#
+# AV1 is in the table: the frame's FFmpeg carries libdav1d and decodes AV1 in
+# software, which the player reports in its own decoder line. (The AArch64 SDK copy
+# taken off the frame says otherwise - CONFIG_LIBDAV1D_DECODER 0 and no dav1d strings
+# - so the copy is not authoritative about the device, and the probe at run time is.)
 #
 # Downloads resume, run JOBS at a time and are skipped when the file is already
 # there, so a second run is cheap.
@@ -29,10 +39,12 @@ declare -A downloads=(
     [glyphew-uv-180.mp4]="https://thanford.com/glyphew/clips/uv_180.mp4"
     [glyphew-uv-180-tb.mp4]="https://thanford.com/glyphew/clips/uv_180_tb.mp4"
 
-    # One clip per decodable codec: H.264 on the software path, HEVC and VP9 on the VPU.
+    # One clip per decodable codec: H.264 on the software path, HEVC and VP9 on the VPU, and AV1,
+    # which the frame's FFmpeg decodes with libdav1d.
     [elecard-h264-theater-square-1080.mp4]="https://www.elecard.com/storage/video/TheaterSquare_1920x1080.mp4"
     [elecard-hevc-tsu-2160.mp4]="https://www.elecard.com/storage/video/TSU_3840x2160.mp4"
     [elecard-vp9-ushaika-river-2160.webm]="https://www.elecard.com/storage/video/UshaikaRiverEmb_3840x2160.webm"
+    [elecard-av1-city-hall-1080.webm]="https://www.elecard.com/storage/video/CityHall_1920x1080.webm"
 
     # Opus audio in WebM, and the silent-media path that has its own code branch.
     [remotion-video-vp9-opus.webm]="https://remotion.media/video-vp9-opus.webm"

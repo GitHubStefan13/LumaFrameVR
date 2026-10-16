@@ -51,7 +51,11 @@ BrowserPreviewUpdate BrowserPreviews::update(bool playing, bool dragging) {
         if(auto result = image_fetch_.take(); result && result->path == selected) {
             preview_path_ = selected;
             if(result->pixels) {
-                preview_details = PreviewDetails{selected, result->pixels->width, result->pixels->height, {}};
+                PreviewDetails details;
+                details.path = selected;
+                details.width = result->pixels->width;
+                details.height = result->pixels->height;
+                preview_details = std::move(details);
                 image_preview_ = thumbnail_image(*result->pixels, preview_extent[0]);
             } else
                 update.error = i18n::tr("error.explorer_image", {{"detail", result->error}});
@@ -75,7 +79,24 @@ BrowserPreviewUpdate BrowserPreviews::update(bool playing, bool dragging) {
     if(auto result = fetch_.poll(); result && result->request.path == selected) {
         preview_path_ = selected;
         if(result->preview) {
-            preview_details = PreviewDetails{selected, result->preview->width, result->preview->height, result->preview->duration};
+            const auto& decoder = result->preview->decoder;
+            std::uintmax_t size = 0;
+            for(const auto& entry : browser.entries())
+                if(entry.path == selected) {
+                    size = entry.size;
+                    break;
+                }
+            PreviewDetails details;
+            details.path = selected;
+            details.width = result->preview->width;
+            details.height = result->preview->height;
+            details.duration = result->preview->duration;
+            details.codec = decoder.name;
+            details.bits = decoder.bits;
+            details.fps = decoder.fps;
+            details.bitrate_mbps = decoder.bitrate_mbps;
+            details.size = size;
+            preview_details = std::move(details);
             preview_ = std::move(result->preview->frame);
         } else {
             preview_details.reset();

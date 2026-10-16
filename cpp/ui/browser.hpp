@@ -29,6 +29,9 @@ struct BrowserRenderState {
     bool stopping{}, descending{}, show_hidden{};
     bool passthrough_enabled{}, passthrough_supported{};
     bool viewer_settings{};
+    // Off by default: a listing is a list of names until someone asks for sizes, and the viewer
+    // settings panel carries that switch.
+    bool show_file_sizes{};
 };
 struct BrowserLayout {
     Rect card, rows, footer;
@@ -52,6 +55,9 @@ std::optional<BrowserTarget> browser_target_at(const FolderBrowser& browser, int
 std::optional<std::size_t> browser_entry_at(int width, int height, std::size_t count, std::size_t selected, BrowserMode mode, int x, int y);
 void draw_browser(Canvas& canvas, const FolderBrowser& browser, const BrowserRenderState& state = {});
 void draw_browser_chrome(Canvas& canvas, const FolderBrowser& browser, const BrowserRenderState& state);
+// A file size for a listing or a preview: binary units with IEC names, which is what the rest of the
+// interface uses for memory, and one decimal place so two similar files can be told apart.
+std::string file_size_text(std::uintmax_t bytes);
 void draw_file_icon(Canvas& canvas, Rect area, bool directory, bool video);
 bool is_video_path(const std::filesystem::path& path);
 void draw_browser_entries(Canvas& canvas, const FolderBrowser& browser, const BrowserRenderState& state);

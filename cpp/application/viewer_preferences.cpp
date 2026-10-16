@@ -32,13 +32,25 @@ ViewerPreferences ViewerPreferenceStore::load() {
             return result;
         std::istringstream input(*bytes);
         std::string header, folder, language;
-        int hidden{}, cache{}, remember{}, muted{}, grid{}, descending{};
+        int hidden{}, cache{}, remember{}, muted{}, grid{}, descending{}, sizes{};
         std::getline(input, header);
         if(header != identity || !(input >> hidden >> cache >> remember >> result.volume >> muted >> grid >> descending >> std::quoted(folder)) || !boolean(hidden) || !boolean(cache) ||
            !boolean(remember) || !boolean(muted) || !boolean(grid) || !boolean(descending) || !std::isfinite(result.volume) || result.volume < 0 || result.volume > 1 || folder.size() > 8192)
             throw std::runtime_error("Unrecognized or invalid viewer state; existing file preserved");
-        if(!(input >> std::ws).eof())
-            input >> language;
+        // The tail carries a boolean and then the language, and both are optional: a state file
+        // written before the file-size switch existed ends at the language, so a token that is not a
+        // boolean is that language rather than a malformed size.
+        if(!(input >> std::ws).eof()) {
+            std::string token;
+            input >> token;
+            if(token == "0" || token == "1") {
+                sizes = token == "1";
+                if(!(input >> std::ws).eof())
+                    input >> language;
+            } else {
+                language = token;
+            }
+        }
         input >> std::ws;
         if(!input.eof())
             throw std::runtime_error("Unexpected viewer state content; existing file preserved");
@@ -47,6 +59,7 @@ ViewerPreferences ViewerPreferenceStore::load() {
         result.show_hidden = hidden;
         result.save_thumbnails = cache;
         result.remember_last_state = remember;
+        result.show_file_sizes = boolean(sizes) && sizes == 1;
         result.muted = muted;
         result.grid = grid;
         result.descending = descending;
@@ -85,7 +98,7 @@ bool ViewerPreferenceStore::save(const ViewerPreferences& preferences) {
         std::ostringstream output;
         output << identity << '\n'
                << value.show_hidden << ' ' << value.save_thumbnails << ' ' << value.remember_last_state << ' ' << std::setprecision(std::numeric_limits<float>::max_digits10) << value.volume << ' '
-               << value.muted << ' ' << value.grid << ' ' << value.descending << ' ' << std::quoted(value.folder.string()) << ' ' << value.language << '\n';
+               << value.muted << ' ' << value.grid << ' ' << value.descending << ' ' << std::quoted(value.folder.string()) << ' ' << value.show_file_sizes << ' ' << value.language << '\n';
         const auto bytes = output.str();
         write_persistent_file(*path_, bytes, existing.saved_bytes_);
         saved_ = value;

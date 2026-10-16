@@ -43,6 +43,32 @@ constexpr uint32_t retry_interval_ms = 250;
 // consumer leases. REQBUFS readback, not these targets, determines queue sizes.
 constexpr uint32_t output_buffers = 2;
 constexpr uint32_t capture_buffers = 8;
+// The geometries whose driver kept its own capture size when asked for the import's margin. Process
+// wide, like the VPU write-off and for the same reason: the driver is the same driver for the same
+// geometry, and the queue is rebuilt for every file and every seek, so asking again would re-negotiate
+// the capture format, an ioctl and at worst a reallocation, for an answer already given. Guarded,
+// because a queue can be built on a decoder thread. v4l2_forget_capture_size_declines() empties it for
+// tests that need to see the first answer again.
+struct CaptureSizeMemo {
+    std::mutex mutex;
+    std::set<std::array<uint64_t, 4>> declined;
+};
+CaptureSizeMemo& capture_size_memo() {
+    // Immortal on purpose, like the lease registry: a decoder teardown after static destruction must
+    // not touch freed memory.
+    static CaptureSizeMemo* memo = new CaptureSizeMemo();
+    return *memo;
+}
+bool capture_size_declined(const std::array<uint64_t, 4>& geometry) {
+    auto& memo = capture_size_memo();
+    const std::lock_guard<std::mutex> guard(memo.mutex);
+    return memo.declined.count(geometry) != 0;
+}
+void remember_capture_size_declined(const std::array<uint64_t, 4>& geometry) {
+    auto& memo = capture_size_memo();
+    const std::lock_guard<std::mutex> guard(memo.mutex);
+    memo.declined.insert(geometry);
+}
 std::atomic<uint64_t> next_pool{1};
 // A frame leases its capture buffer until the consumer retires it, and the queue
 // frees its buffers only when the last lease dies. Both counters are process
@@ -576,6 +602,47 @@ struct media::V4l2Decoder::State {
             failed(refused, "V4L2 capture negotiation has no exportable layout");
         }
         auto& p = f.fmt.pix_mp;
+        // The driver's sizeimage is the budget the hardware writes into for a compressed Q10C capture,
+        // and for the same modified format Vulkan asks for a few pages more than that. V4L2 lets a
+        // client propose sizeimage on S_FMT, so ask for the bytes the described planes occupy plus a
+        // margin and let the readback decide: a grant means the import satisfies Vulkan outright, and
+        // a clamp leaves the driver's own number, which the negotiated-layout import can still use.
+        // REQBUFS has not run yet, so this is a legal point at which to negotiate. Everything below
+        // reads this readback, so a driver that ignores the request changes nothing.
+        //
+        // A driver that keeps its own size is not asked again for the same geometry: every seek builds
+        // a new queue, and re-negotiating the capture format for a request this driver has already
+        // declined would buy nothing and cost an ioctl and, at worst, a reallocation per seek. A grant
+        // is re-asked every time, because the raised format is what makes that queue's buffers big
+        // enough in the first place.
+        if(layout->modifier == v4l2_qcom_compressed) {
+            const uint64_t requested = v4l2_requested_capture_size(*layout);
+            const auto geometry = std::array<uint64_t, 4>{p.pixelformat, p.width, p.height, p.plane_fmt[0].bytesperline};
+            if(requested > p.plane_fmt[0].sizeimage && requested <= UINT32_MAX && !capture_size_declined(geometry)) {
+                const v4l2_format before = f;
+                v4l2_format raised = f;
+                raised.fmt.pix_mp.plane_fmt[0].sizeimage = static_cast<uint32_t>(requested);
+                v4l2_format granted{};
+                granted.type = capture_type;
+                const bool answered = device->control(VIDIOC_S_FMT, &raised) >= 0 && device->control(VIDIOC_G_FMT, &granted) >= 0;
+                const auto& g = granted.fmt.pix_mp;
+                auto raised_layout = answered ? v4l2_plane_layout(g.pixelformat, g.width, g.height, g.plane_fmt[0].bytesperline) : std::optional<V4l2PlaneLayout>{};
+                if(answered && g.pixelformat == formats.capture && g.num_planes == 1 && raised_layout && v4l2_buffer_fits(*raised_layout, g.plane_fmt[0].sizeimage)) {
+                    f = granted;
+                    layout = raised_layout;
+                } else {
+                    // The raise changed something this code does not describe, so keep the format whose
+                    // layout was just validated rather than trading a working queue for a margin.
+                    f = before;
+                }
+                const bool granted_larger = f.fmt.pix_mp.plane_fmt[0].sizeimage >= requested;
+                if(!granted_larger)
+                    remember_capture_size_declined(geometry);
+                std::fprintf(stderr, "Decoder: V4L2 capture size request: asked %llu bytes for the Q10C capture, driver answered %llu%s\n", static_cast<unsigned long long>(requested),
+                             static_cast<unsigned long long>(f.fmt.pix_mp.plane_fmt[0].sizeimage),
+                             granted_larger ? " (using the larger allocation)" : " (clamped; the negotiated planes are imported as reported, and this driver is not asked again for this geometry)");
+            }
+        }
         pool->layout = *layout;
         v4l2_selection selection{};
         selection.type = capture_type;
@@ -792,6 +859,12 @@ struct media::V4l2Decoder::State {
         flush_errors = 0;
     }
 };
+
+void media::v4l2_forget_capture_size_declines() {
+    auto& memo = capture_size_memo();
+    const std::lock_guard<std::mutex> guard(memo.mutex);
+    memo.declined.clear();
+}
 
 bool media::await_capture_leases(bool require_released_queues) noexcept {
     auto& registry = lease_registry();

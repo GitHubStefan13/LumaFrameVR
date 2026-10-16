@@ -33,11 +33,28 @@ int lumaframevr::tests::media_errors(int, char**) {
         require(!decoder_name(&parameters), "VP8 has no hardware name");
         parameters = describe(AV_CODEC_ID_HEVC, AV_PIX_FMT_YUV420P12LE, 3840, 2160);
         require(!decoder_name(&parameters), "12-bit HEVC has no hardware name");
+        // The refusal says which of the four things is the reason, and AV1 is no longer a hand-written
+        // verdict: its sentence is build-specific - it exists here because FFmpeg 7's native "av1"
+        // entry cannot decode in software - so it is asserted only where that is what happens.
         parameters = describe(AV_CODEC_ID_AV1, AV_PIX_FMT_YUV420P, 1920, 1080);
         const auto unsupported = ::media::unsupported_video(&parameters, "/videos/clip.mkv");
         has(unsupported, "Unsupported video");
         has(unsupported, "av1");
         has(unsupported, "clip.mkv");
+        if(!::media::av1_software_decoder_available()) {
+            has(unsupported, "no software decode");
+            has(unsupported, "libdav1d");
+        }
+        require(unsupported.error.find("not decodable") == std::string::npos, "no hand-written verdict about AV1");
+        // A codec this build decodes, with a format no decoder path here can carry.
+        parameters = describe(AV_CODEC_ID_HEVC, AV_PIX_FMT_YUV444P, 1920, 1080);
+        has(::media::unsupported_video(&parameters, "/videos/clip.mkv"), "the codec decodes here");
+        has(::media::unsupported_video(&parameters, "/videos/clip.mkv"), "yuv444p");
+        // A codec outside the set this player decodes, and one this build has no decoder for at all.
+        parameters = describe(AV_CODEC_ID_VVC, AV_PIX_FMT_YUV420P, 1920, 1080);
+        has(::media::unsupported_video(&parameters, "/videos/clip.mkv"), "outside the set this player decodes");
+        parameters = describe(AV_CODEC_ID_AVS3, AV_PIX_FMT_YUV420P, 1920, 1080);
+        has(::media::unsupported_video(&parameters, "/videos/clip.mkv"), "has no decoder for that codec");
         parameters = describe(AV_CODEC_ID_HEVC, AV_PIX_FMT_YUV420P10LE, 7680, 4320, 2);
         const auto startup = ::media::startup_failure(&parameters, "/videos/main10-8k60.mp4", "open native decoder", AVERROR(ENOMEM));
         for(auto field : {"Video decoder start failed", "open native decoder", "-12", "hevc", "7680x4320", "depth=10", "main10-8k60.mp4", "not in codec support"}) has(startup, field);

@@ -14,6 +14,7 @@
 #include <cmath>
 #include <filesystem>
 #include <iostream>
+#include <set>
 #include <fstream>
 #include <limits>
 #include <stdexcept>
@@ -126,6 +127,44 @@ int lumaframevr::tests::ui_contract(int argc, char** argv) {
                 lumaframevr::VideoPresentation probe;
                 for(const auto& row : ui::settings_layout(probe, 0, ui::settings_size[0], ui::settings_size[1]))
                     require(row.area.bottom() <= panels[2].second - 4, "a settings row falls outside its panel");
+
+                // The stereo choice has to be reachable in every projection. It is the row that says
+                // whether a VR video is a stereo pair, and in 180 and 360 it used to sit under a
+                // Format row that only repeated the projection choice, below the rows a headset panel
+                // shows. The fisheye Format row stays, because there it is the lens angle.
+                for(auto projection : {lumaframevr::Projection::flat, lumaframevr::Projection::hemisphere, lumaframevr::Projection::sphere}) {
+                    lumaframevr::VideoPresentation p;
+                    p.projection = projection;
+                    const auto fields = ui::settings_fields(p);
+                    require(fields.size() > 1 && fields[0].kind == ui::SettingKind::projection && fields[1].kind == ui::SettingKind::stereo, "the stereo row sits directly under the projection row");
+                    require(ui::setting_options(fields[1], p).size() == 3, "the stereo row offers mono, side by side and top/bottom");
+                    for(const auto& field : fields) require(field.kind != ui::SettingKind::format, "180 and 360 do not repeat the projection choice as a format row");
+                }
+                {
+                    lumaframevr::VideoPresentation fisheye;
+                    fisheye.projection = lumaframevr::Projection::fisheye;
+                    const auto fields = ui::settings_fields(fisheye);
+                    require(fields.size() > 1 && fields[1].kind == ui::SettingKind::format, "the fisheye lens angle keeps its own row");
+                    require(ui::setting_options(fields[1], fisheye).size() == 4, "the fisheye row offers the four lens angles");
+                }
+
+                // The viewer settings rows the controller addresses are one contract: the toggles in
+                // draw order, then the update row, the language buttons, the update button, its paging
+                // and Close. The update row and Close were one index once, which is why a click on
+                // Close was indistinguishable from the row that runs an update.
+                {
+                    const lumaframevr::ui::ViewerSettingsState state{};
+                    const auto targets = ui::viewer_setting_targets(1200, 800, lumaframevr::i18n::active().languages(), state);
+                    std::set<std::size_t> toggles, others;
+                    for(const auto& target : targets) (target.index < ui::viewer_setting_toggles ? toggles : others).insert(target.index);
+                    require(toggles.size() == ui::viewer_setting_toggles, "every toggle row has its own index");
+                    require(others.count(ui::viewer_setting_update_row) == 0, "the update row is selected, not a target");
+                    require(others.count(ui::viewer_setting_close) == 1 && others.count(ui::viewer_setting_update) == 1, "Close and the update button are separate targets");
+                    // The size text the listing and the preview draw.
+                    require(ui::file_size_text(0) == "0 B" && ui::file_size_text(999) == "999 B", "a small size is bytes");
+                    require(ui::file_size_text(1536) == "1.5 KiB", "a kilobyte carries its unit");
+                    require(ui::file_size_text((4ull << 30) + (512ull << 20)) == "4.5 GiB", "a large size carries its unit");
+                }
             }
 
             // The alignment panel's tabs and its Reset button have to accept the beam where they

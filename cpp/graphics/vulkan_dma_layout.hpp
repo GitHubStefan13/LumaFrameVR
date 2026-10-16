@@ -14,12 +14,36 @@ inline std::array<VkSubresourceLayout, 2> dma_buf_plane_layouts(const media::Dma
 }
 
 enum class DmaBufSizeAction { Import, DeriveLayout, Reject };
+// Where the described planes actually end: the last byte any plane's rows touch, which is the memory
+// the GPU can be asked to read. A two-plane 4:2:0 capture has a full-height luma plane and a
+// half-height chroma plane, and both carry the driver's own pitches and offsets.
+inline VkDeviceSize dma_buf_described_extent(const media::DmaBuf& source) {
+    const VkDeviceSize rows[2] = {static_cast<VkDeviceSize>(source.height > 0 ? source.height : 0), static_cast<VkDeviceSize>(source.height > 0 ? (source.height + 1) / 2 : 0)};
+    // The crop is inside the coded extent on this path; a zero pitch would describe nothing.
+    VkDeviceSize extent = 0;
+    for(std::size_t i = 0; i < 2; ++i) {
+        if(source.pitches[i] == 0)
+            continue;
+        const VkDeviceSize end = source.offsets[i] + rows[i] * source.pitches[i];
+        if(end > extent)
+            extent = end;
+    }
+    return extent;
+}
 inline DmaBufSizeAction dma_buf_size_action(const media::DmaBuf& source, VkDeviceSize required, bool retried = false) {
     if(required <= source.size)
         return DmaBufSizeAction::Import;
+    // Vulkan's requirement for a modified two-plane capture is an estimate for a vendor layout it does
+    // not model: the device run of a 7296x3648 Q10C capture was asked for 28672 bytes more than the
+    // driver had allocated, while the planes it reported end 90112 bytes inside that allocation. What
+    // has to fit in the buffer is the memory the described planes occupy, so where the producer
+    // negotiated the layout that is the test - the requirement alone would refuse a frame whose
+    // samples are all present. A layout whose planes do not fit is still refused.
+    if(source.source_layout)
+        return dma_buf_described_extent(source) <= source.size ? DmaBufSizeAction::Import : DmaBufSizeAction::Reject;
     // Recreating an identical explicit layout cannot reduce its requirements.
     // Only a computed layout may be discarded; a negotiated source layout fails closed.
-    if(source.source_layout || retried)
+    if(retried)
         return DmaBufSizeAction::Reject;
     return DmaBufSizeAction::DeriveLayout;
 }

@@ -1,4 +1,5 @@
 #include "media_errors.hpp"
+#include "media_codec.hpp"
 #include <array>
 #include <cstdio>
 
@@ -28,13 +29,23 @@ media::Result media::unsupported_video(const AVCodecParameters* p, const char* p
         profile = number.data();
     }
     const AVCodec* software = p ? software_decoder(p) : nullptr;
-    return {-1, format_message("Unsupported video: codec=%s, profile=%s, pixel_format=%s, %dx%d, depth=%d "
-                               "(supported: h264, hevc, vp8, vp9, mpeg4, vc1 and theora, 8-bit; "
-                               "av1 is not decodable on this build - it needs libdav1d or an AV1 hwaccel, "
-                               "neither of which is present); "
+    // The reason is derived from what was found, not asserted: a codec this build has no decoder for
+    // is the build's limit, a codec outside the set this player decodes is the player's, and a codec
+    // it does decode means the stream's pixel format, bit depth or chroma layout is what no decoder
+    // path here can carry. AV1 gets its own sentence because FFmpeg 7's native "av1" entry exists but
+    // cannot decode without a hardware accelerator, so "no decoder" would be the wrong explanation.
+    const char* reason = !p ? "no video stream to describe"
+                         : (p->codec_id == AV_CODEC_ID_AV1 && avcodec_find_decoder(AV_CODEC_ID_AV1) != nullptr && !av1_software_decoder_available())
+                                 ? "this build's AV1 decoder carries no software decode - it needs libdav1d or libaom-av1, and this FFmpeg has neither"
+                         : !software                     ? "this build has no decoder for that codec"
+                         : !supported_codec(p->codec_id) ? "the codec is outside the set this player decodes"
+                                                         : "the codec decodes here; its pixel format, bit depth or chroma layout is outside every decoder path";
+    return {-1, format_message("Unsupported video: codec=%s, profile=%s, pixel_format=%s, %dx%d, depth=%d; %s "
+                               "(accepted: h264, hevc, vp9, vp8, av1, mpeg4, vc1 and theora, 4:2:0, 8 or 10 bits; "
+                               "the software path packs yuv420p, nv12, yuv420p10le and p010le); "
                                "hardware decoder=%s, software decoder=%s; file=%s",
                                p ? avcodec_get_name(p->codec_id) : "none", profile ? profile : "unknown", pixel ? pixel->name : "unknown", p ? p->width : 0, p ? p->height : 0,
-                               pixel ? pixel->comp[0].depth : 0, p && decoder_name(p) ? decoder_name(p) : "none", software ? software->name : "none", path)};
+                               pixel ? pixel->comp[0].depth : 0, reason, p && decoder_name(p) ? decoder_name(p) : "none", software ? software->name : "none", path)};
 }
 
 media::Result media::startup_failure(const AVCodecParameters* p, const char* path, const char* operation, int code) {

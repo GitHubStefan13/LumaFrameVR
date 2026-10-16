@@ -17,8 +17,8 @@ std::optional<media::V4l2PlaneLayout> media::v4l2_plane_layout(uint32_t format, 
         const uint64_t meta_height = *align_up((uint64_t(height) + 3) / 4, 16);
         if(pitch > UINT64_MAX / height)
             return {};
-        const auto metadata = align_up(meta_stride * meta_height, 4096);
-        const auto luma = align_up(pitch * height, 4096);
+        const auto metadata = align_up(meta_stride * meta_height, v4l2_page_bytes);
+        const auto luma = align_up(pitch * height, v4l2_page_bytes);
         if(!metadata || !luma || *luma >= UINT64_MAX - *metadata)
             return {};
         const uint64_t uv = *metadata + *luma;
@@ -50,6 +50,34 @@ bool media::v4l2_buffer_fits(const V4l2PlaneLayout& layout, uint64_t size) {
             return false;
     }
     return true;
+}
+
+uint64_t media::v4l2_capture_margin_bytes(uint64_t described) {
+    const uint64_t proportional = described / v4l2_capture_margin_divisor;
+    return proportional > v4l2_capture_margin_floor_bytes ? proportional : v4l2_capture_margin_floor_bytes;
+}
+
+uint64_t media::v4l2_requested_capture_size(const V4l2PlaneLayout& layout) {
+    // Only the compressed capture needs a margin: for NV12 and linear P010 the driver's sizeimage
+    // describes the same rows the layout does, so there is nothing to ask for.
+    if(layout.modifier != v4l2_qcom_compressed || !layout.width || !layout.height || !layout.pitches[1])
+        return 0;
+    // The last byte either plane's rows touch: luma is full height, chroma is half height for 4:2:0.
+    const uint64_t chroma_rows = (uint64_t(layout.height) + 1) / 2;
+    const auto end = [&](size_t plane, uint64_t rows) -> std::optional<uint64_t> {
+        if(layout.pitches[plane] > (UINT64_MAX - layout.offsets[plane]) / rows)
+            return {};
+        return layout.offsets[plane] + layout.pitches[plane] * rows;
+    };
+    const auto luma = end(0, layout.height);
+    const auto chroma = end(1, chroma_rows);
+    if(!luma || !chroma)
+        return 0;
+    const uint64_t described = *luma > *chroma ? *luma : *chroma;
+    const uint64_t margin = v4l2_capture_margin_bytes(described);
+    if(described > UINT64_MAX - margin)
+        return 0;
+    return described + margin;
 }
 
 std::optional<media::V4l2Formats> media::v4l2_formats(V4l2Stream stream) {

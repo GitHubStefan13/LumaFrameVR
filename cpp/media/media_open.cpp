@@ -67,34 +67,24 @@ OpenResult open(const char* path, bool software_only) {
     if(!decodable(*p)) {
         return Error{AVERROR_INVALIDDATA, unsupported_video(p, path).error};
     }
-    // 10-bit is refused rather than played: the software path packs 8-bit YUV, and the device says the
-    // picture is not right. The check reads the depth the parser reported and, where that is absent,
-    // the pixel format by name - both facts about the stream, neither needing the device, and neither
-    // needing av_pix_fmt_desc_get, whose absence from the link line is an ordering matter rather than
-    // a missing symbol. It comes out when the V4L2 decoder carries P010 and has been compared on the
-    // frame.
-    const auto ten_bit_format = [](AVPixelFormat format) {
-        switch(format) {
-            case AV_PIX_FMT_YUV420P10LE:
-            case AV_PIX_FMT_YUV420P10BE:
-            case AV_PIX_FMT_YUV422P10LE:
-            case AV_PIX_FMT_YUV422P10BE:
-            case AV_PIX_FMT_YUV444P10LE:
-            case AV_PIX_FMT_YUV444P10BE:
-            case AV_PIX_FMT_P010LE:
-            case AV_PIX_FMT_P010BE:
-                return true;
-            default:
-                return false;
-        }
-    };
-    // The ten-bit refusal guards the software path, which packs 8-bit YUV. The V4L2 decoder carries
-    // Q10C and P010 directly, so asking for it must not be refused here - and asking for it is exactly
-    // what a ten-bit file needs. The request is read from the environment, which is where the decoder
-    // option is recorded before the workers start.
+    // A stream whose format no decoder path here can carry is refused in one place, with the reason,
+    // rather than failing later inside the packer. The software path packs 4:2:0 in exactly the
+    // formats listed below, ten-bit little-endian becoming P010 there - which is why ten-bit is no
+    // longer refused outright, as it was while the packer only carried 8-bit luma. decodable() has
+    // already refused depths above ten and chroma that is not 4:2:0, so what is left is the format:
+    // big-endian ten-bit, 4:2:2 and anything the packer has no shift for.
+    const auto format = static_cast<AVPixelFormat>(p->format);
+    const bool carried_by_software = format == AV_PIX_FMT_YUV420P || format == AV_PIX_FMT_YUVJ420P || format == AV_PIX_FMT_NV12 || format == AV_PIX_FMT_YUV420P10LE || format == AV_PIX_FMT_P010LE;
+    const bool eight_bit_format = format == AV_PIX_FMT_YUV420P || format == AV_PIX_FMT_YUVJ420P || format == AV_PIX_FMT_NV12;
+    // The parser reported more than eight bits but named an eight-bit format: packing that as eight
+    // bits is exactly the wrong picture this refusal exists to prevent.
+    const bool format_contradicts_depth = p->bits_per_raw_sample > 8 && eight_bit_format;
+    // The V4L2 decoder carries Q10C and P010 by request, so asking for it must not be refused here -
+    // and asking for it is exactly what a ten-bit file needs. The request is read from the
+    // environment, which is where the decoder option is recorded before the workers start.
     const char* requested_decoder = std::getenv("LUMAFRAMEVR_DECODER");
     const bool v4l2_requested = requested_decoder && std::string_view(requested_decoder) == "v4l2";
-    if(!v4l2_requested && (p->bits_per_raw_sample > 8 || ten_bit_format(static_cast<AVPixelFormat>(p->format)))) {
+    if(!v4l2_requested && (!carried_by_software || format_contradicts_depth)) {
         return Error{AVERROR_INVALIDDATA, unsupported_video(p, path).error};
     }
     media->packet = av_packet_alloc();

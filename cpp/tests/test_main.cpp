@@ -17,6 +17,7 @@ constexpr Entry entries[] = {
         {"browser", lumaframevr::tests::browser},
         {"browser_viewport", lumaframevr::tests::browser_viewport},
         {"catalogue", lumaframevr::tests::catalogue},
+        {"codec_support", lumaframevr::tests::codec_support},
         {"controller", lumaframevr::tests::controller},
         {"controller_bindings", lumaframevr::tests::controller_bindings},
         {"dma_import", lumaframevr::tests::dma_import},

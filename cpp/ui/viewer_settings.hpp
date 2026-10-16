@@ -8,8 +8,24 @@
 #include <vector>
 
 namespace lumaframevr::ui {
+// The rows the controller addresses by index: the toggles in the order the panel draws them, then
+// the fixed rows under them. Both the panel and the controller act on these, so they live in one
+// place; a row added here is a row every one of those sites already knows about.
+inline constexpr std::size_t viewer_setting_hidden = 0;
+inline constexpr std::size_t viewer_setting_file_sizes = 1;
+inline constexpr std::size_t viewer_setting_thumbnails = 2;
+inline constexpr std::size_t viewer_setting_remember = 3;
+inline constexpr std::size_t viewer_setting_toggles = 4;
+// The update row is selectable, and left/right pages it; the update button under it starts the
+// check. They were one index once, which is why a click on Close used to be indistinguishable from
+// the row that runs an update.
+inline constexpr std::size_t viewer_setting_update_row = viewer_setting_toggles;
+inline constexpr std::size_t viewer_setting_language = viewer_setting_toggles + 1;
+inline constexpr std::size_t viewer_setting_update = viewer_setting_toggles + 2;
+inline constexpr std::size_t viewer_setting_update_more = viewer_setting_toggles + 3;
+inline constexpr std::size_t viewer_setting_close = viewer_setting_toggles + 4;
 struct ViewerSettingsState {
-    bool open{}, show_hidden{true}, save_thumbnails{}, remember_last_state{true};
+    bool open{}, show_hidden{true}, show_file_sizes{}, save_thumbnails{}, remember_last_state{true};
     std::size_t selected{};
     std::string language{"en"};
     std::string error;

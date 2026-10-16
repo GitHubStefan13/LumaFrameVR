@@ -28,6 +28,8 @@ place.filesystem = File System
 viewer.title = Viewer advanced settings
 viewer.hidden = Show hidden files and folders
 viewer.hidden.detail = Include dot-prefixed entries
+viewer.file_sizes = Show file sizes
+viewer.file_sizes.detail = Size beside each file in the listing
 viewer.thumbnails = Save folder thumbnails
 viewer.thumbnails.detail = Private cache; originals are not modified
 viewer.remember = Remember last folder and volume
@@ -46,6 +48,9 @@ welcome.hint = D-pad: choose language     A: confirm
 
 preview.title = Preview
 preview.duration = Duration {time}
+preview.encoding = Encoding {codec}, {bits}-bit
+preview.rate = {fps} fps, {bitrate} Mbit/s
+preview.size = File size {size}
 
 transport.back = Back
 transport.loading_image = Loading image...

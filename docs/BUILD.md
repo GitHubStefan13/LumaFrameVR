@@ -261,12 +261,16 @@ and `image_reader` needs `LUMAFRAMEVR_IMAGE_FIXTURES`. The two media clips are n
 interchangeable: `media_loop` seeks to two seconds and drains to EOF.
 
 `scripts/make-test-fixtures.sh` writes both media clips with the `ffmpeg` CLI (from the
-`ffmpeg` package):
+`ffmpeg` package), and two more for the codec support test: an AV1 clip and a ten-bit one.
+Both are the same pattern as the short clip, which is what lets the ten-bit decode be compared
+against the eight-bit one rather than merely reported as decoded. It needs an AV1 encoder
+(`libaom-av1`) and a ten-bit one (`libx265`, or `libvpx-vp9`) and says so when it has neither:
 
 ```sh
 ./scripts/make-test-fixtures.sh
 cmake -S . -B build-host -DCMAKE_BUILD_TYPE=Release \
-  -DLUMAFRAMEVR_ASSEMBLY_VIDEO="$PWD/test-fixtures/video-8s.mp4"
+  -DLUMAFRAMEVR_ASSEMBLY_VIDEO="$PWD/test-fixtures/video-8s.mp4" \
+  -DLUMAFRAMEVR_CODEC_FIXTURES="$PWD/test-fixtures"
 cmake --build build-host --parallel 2
 LUMAFRAMEVR_TEST_VIDEO="$PWD/test-fixtures/video-96x64-2s.mp4" ctest --test-dir build-host --output-on-failure
 ```

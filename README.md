@@ -15,6 +15,13 @@ The video controls: the transport bar, the volume popup, rotation and viewer adv
 settings. H.264, HEVC and VP9 decode through V4L2 memory-to-memory when the VPU offers it and
 fall back to software when it does not.
 
+Decoding covers eight- and ten-bit 4:2:0, so HEVC Main10 and VP9 profile 2 play through the
+software path, packed to P010 and uploaded in the same two-plane format the VPU's own P010
+frames are imported in. AV1 follows the software AV1 decoder the linked FFmpeg carries: FFmpeg
+7's native `av1` entry cannot decode without a hardware accelerator, so it takes `libdav1d` or
+`libaom-av1`, and the frame's FFmpeg has libdav1d — AV1 plays there. A build with neither refuses
+an AV1 file with that reason rather than half-playing, which is what a hwaccel-only entry would do.
+
 ## What is in the repository
 
 

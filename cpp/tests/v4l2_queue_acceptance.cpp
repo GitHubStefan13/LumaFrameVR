@@ -475,6 +475,10 @@ int lumaframevr::tests::v4l2_queue(int, char**) {
             require(std::count(no_minimum->calls.begin(), no_minimum->calls.end(), VIDIOC_G_CTRL) == 0 && std::count(no_minimum->calls.begin(), no_minimum->calls.end(), VIDIOC_G_PARM) == 0,
                     "queue setup contains no minimum-count or streaming-parameter query");
         }
+        // The size-request memory is process wide, so this case starts from a clean one and then drives
+        // it: the fixture's driver clamps the request, which is exactly the answer that is remembered.
+        media::v4l2_forget_capture_size_declines();
+        bool size_request_declined = false;
         for(uint32_t bits : {8u, 10u})
             for(int proposal_error : {0, EINVAL, ENOTSUP}) {
                 const bool needs_sizes = proposal_error != 0;
@@ -492,9 +496,25 @@ int lumaframevr::tests::v4l2_queue(int, char**) {
                 const auto& first = negotiation->capture_requests.front();
                 require(first.pixelformat == negotiation->capture_format && first.num_planes == 0 && first.plane_fmt[0].bytesperline == 0 && first.plane_fmt[0].sizeimage == 0,
                         "first proposal requests a format, not an inherited or computed layout");
-                const std::vector<unsigned long> expected = needs_sizes ? std::vector<unsigned long>{VIDIOC_G_FMT, VIDIOC_S_FMT, VIDIOC_G_FMT, VIDIOC_S_FMT, VIDIOC_G_FMT}
-                                                                        : std::vector<unsigned long>{VIDIOC_G_FMT, VIDIOC_S_FMT, VIDIOC_G_FMT};
-                require(negotiation->capture_format_calls == expected, "proposal/readback/reproposal ioctl order");
+                std::vector<unsigned long> expected = needs_sizes ? std::vector<unsigned long>{VIDIOC_G_FMT, VIDIOC_S_FMT, VIDIOC_G_FMT, VIDIOC_S_FMT, VIDIOC_G_FMT}
+                                                                  : std::vector<unsigned long>{VIDIOC_G_FMT, VIDIOC_S_FMT, VIDIOC_G_FMT};
+                // A compressed capture whose driver size is below the bytes its planes occupy plus the
+                // margin is asked once more for that margin, and the readback decides. This driver clamps
+                // it, so the first queue for this geometry asks and the ones after it do not - which is
+                // the other half of the contract, and the half that keeps a seek from re-negotiating the
+                // capture format for an answer it already has.
+                const auto capture_layout = media::v4l2_plane_layout(negotiation->capture_format, negotiation->capture_width, negotiation->capture_height, negotiation->capture_pitch);
+                const bool compressed = capture_layout && media::v4l2_requested_capture_size(*capture_layout) > negotiation->capture_bytes;
+                const bool asks_for_size = compressed && !size_request_declined;
+                if(asks_for_size) {
+                    expected.insert(expected.end(), {VIDIOC_S_FMT, VIDIOC_G_FMT});
+                    // The request is only meaningful if it reaches the driver with the documented number.
+                    require(negotiation->capture_requests.back().plane_fmt[0].sizeimage == static_cast<uint32_t>(media::v4l2_requested_capture_size(*capture_layout)),
+                            "the size request proposes the described planes plus the margin for that extent");
+                }
+                require(negotiation->capture_format_calls == expected, asks_for_size ? "proposal/readback/reproposal ioctl order" : "a geometry this driver has already declined is not asked again");
+                if(compressed)
+                    size_request_declined = true;
                 if(needs_sizes) {
                     const auto& retry = negotiation->capture_requests.at(1);
                     require(retry.pixelformat == negotiation->capture_format && retry.num_planes == 1 && retry.width == negotiation->capture_width && retry.height == negotiation->capture_height &&

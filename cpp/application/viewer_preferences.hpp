@@ -5,6 +5,9 @@
 namespace lumaframevr {
 struct ViewerPreferences {
     bool show_hidden{true}, save_thumbnails{}, remember_last_state{true};
+    // Whether a listing shows file sizes. Off by default, so a listing stays what it was until the
+    // switch is turned on in the viewer settings.
+    bool show_file_sizes{};
     std::filesystem::path folder;
     float volume{0.8F};
     bool muted{}, grid{}, descending{};

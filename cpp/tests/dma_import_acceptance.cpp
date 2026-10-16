@@ -18,6 +18,12 @@ constexpr uint64_t chroma_offset = 35663872;           // metadata (0x2B000) + p
 constexpr uint64_t stored_pitch = 9728;                // driver stride, not 2-byte linear samples
 constexpr uint64_t driver_buffer = 53497856;           // V4L2 negotiated allocation
 constexpr uint64_t vulkan_requirement = 53526528;      // 28672 bytes larger, the reported shortfall
+constexpr int coded_height = 3648;                     // the coded extent the device reported
+// Where the two planes the device reported end: the chroma offset plus half the coded height's rows.
+// Everything above is evidence from one device run, and this is the arithmetic on it rather than a
+// number of its own.
+constexpr uint64_t described_planes_end = chroma_offset + (uint64_t(coded_height) + 1) / 2 * stored_pitch;
+static_assert(described_planes_end < driver_buffer, "the recorded planes end inside the recorded allocation");
 }  // namespace
 
 int lumaframevr::tests::dma_import(int, char**) {
@@ -71,11 +77,19 @@ int lumaframevr::tests::dma_import(int, char**) {
         require(create_info.planes[0].offset == 0 && create_info.planes[0].rowPitch == stored_pitch, "luma plane offset 0 and pitch 9728 preserved");
         require(create_info.planes[1].offset == chroma_offset && create_info.planes[1].rowPitch == stored_pitch, "chroma plane offset 35663872 and pitch 9728 preserved");
 
-        // 4. The 28672-byte disagreement is reached with the modifier already in
-        // place, so it is not a missing-modifier fault: the explicit layout is
-        // what makes Vulkan ask for 53526528, and a negotiated layout fails
-        // closed rather than binding a smaller allocation.
-        require(dma_buf_size_action(source, vulkan_requirement, false) == DmaBufSizeAction::Reject, "negotiated layout never relaxes to a smaller allocation");
+        // 4. The 28672-byte disagreement is reached with the modifier already in place, so it is not a
+        // missing-modifier fault: Vulkan asks for 53526528 while the driver allocated 53497856. The
+        // planes the device reported end at 53407744, 90112 bytes inside that allocation, so every
+        // sample the GPU is asked for is present and the negotiated layout is imported with the
+        // difference logged. What must fit in the buffer is the described planes, not Vulkan's
+        // estimate for a vendor layout it does not model.
+        require(dma_buf_described_extent(source) == described_planes_end, "the described planes end where the reported pitches and offsets put them");
+        require(dma_buf_size_action(source, vulkan_requirement, false) == DmaBufSizeAction::Import, "a negotiated layout whose planes fit is imported although Vulkan asks for more");
+        // A negotiated layout whose own planes overrun the buffer is a different matter and stays
+        // refused: no relaxation makes a buffer smaller than the layout the driver reported usable.
+        media::DmaBuf overrun = source;
+        overrun.size = described_planes_end - media::v4l2_page_bytes;
+        require(dma_buf_size_action(overrun, vulkan_requirement, false) == DmaBufSizeAction::Reject, "a negotiated layout whose planes overrun the buffer is refused");
         media::DmaBuf computed = source;
         computed.source_layout = false;
         require(dma_buf_size_action(computed, vulkan_requirement, false) == DmaBufSizeAction::DeriveLayout, "computed layout may retry without an explicit layout");

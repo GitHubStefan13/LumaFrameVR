@@ -12,6 +12,9 @@ if(NOT BUILD_TESTING)
 endif()
 
 set(LUMAFRAMEVR_ASSEMBLY_VIDEO "" CACHE FILEPATH "Real application fixture for the media loop test")
+# A directory holding video-av1-96x64-2s.mkv and video-10bit-96x64-2s.mkv, written by
+# scripts/make-test-fixtures.sh. The codec_support test skips without them.
+set(LUMAFRAMEVR_CODEC_FIXTURES "" CACHE PATH "Directory of AV1 and ten-bit codec fixtures")
 
 add_executable(lumaframevr_tests
   cpp/tests/test_main.cpp
@@ -22,6 +25,7 @@ add_executable(lumaframevr_tests
   cpp/tests/browser_acceptance.cpp
   cpp/tests/browser_viewport_acceptance.cpp
   cpp/tests/catalogue_acceptance.cpp
+  cpp/tests/codec_support_acceptance.cpp
   cpp/tests/controller_acceptance.cpp
   cpp/tests/controller_bindings_acceptance.cpp
   cpp/tests/dma_import_acceptance.cpp
@@ -96,6 +100,7 @@ set(LUMAFRAMEVR_TESTS
   "browser||30|0"
   "browser_viewport|${CMAKE_BINARY_DIR}/viewport-fixtures|45|0"
   "catalogue|${CMAKE_CURRENT_SOURCE_DIR}/cpp/i18n/lang ${CMAKE_BINARY_DIR}/catalogue-fixtures|30|0"
+  "codec_support|${LUMAFRAMEVR_CODEC_FIXTURES}|60|1"
   "controller||30|0"
   "controller_bindings||30|0"
   "dma_import||30|0"

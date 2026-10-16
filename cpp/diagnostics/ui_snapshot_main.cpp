@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
         if(argc != 5 || std::string_view(argv[1]) != "--snapshot")
             throw std::invalid_argument("Usage: lumaframevr_ui --snapshot MODE FOLDER OUTPUT.ppm");
         const std::string_view mode(argv[2]);
-        if(mode == "folder-list" || mode == "folder-grid") {
+        if(mode == "folder-list" || mode == "folder-grid" || mode == "folder-list-sizes") {
             lumaframevr::FolderBrowser browser(argv[3]);
             const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
             while(browser.loading()) {
@@ -43,19 +43,46 @@ int main(int argc, char** argv) {
             lumaframevr::ui::BrowserRenderState state;
             if(mode == "folder-grid")
                 state.mode = lumaframevr::ui::BrowserMode::Grid;
+            state.show_file_sizes = mode == "folder-list-sizes";
             lumaframevr::ui::draw_browser(canvas, browser, state);
             canvas.save_ppm(argv[4]);
-            std::cout << "Rendered C++ production file viewer: " << mode << '\n';
+            std::cout << "Rendered C++ production file viewer: " << mode << "\n";
             return 0;
         }
         // The settings and alignment panels are only reachable from inside the headset, so a
-        // snapshot is the only way to look at them on a development host.
-        if(mode == "settings" || mode == "settings-flat") {
+        // snapshot is the only way to look at them on a development host. `settings-<projection>`
+        // renders the panel for that projection, and a `-sbs` suffix renders it in side-by-side
+        // stereo, because which rows exist is a function of both.
+        if(mode == "settings" || mode.starts_with("settings-")) {
             lumaframevr::ui::Canvas canvas(lumaframevr::ui::settings_size[0], lumaframevr::ui::settings_size[1]);
             auto presentation = show_every_row();
-            if(mode == "settings-flat") {
-                presentation.projection = lumaframevr::Projection::flat;
-                presentation.stereo = lumaframevr::Stereo::mono;
+            if(mode != "settings") {
+                const auto projection = mode.substr(std::string_view("settings-").size());
+                if(projection == "flat")
+                    presentation.projection = lumaframevr::Projection::flat;
+                else if(projection == "180")
+                    presentation.projection = lumaframevr::Projection::hemisphere;
+                else if(projection == "360")
+                    presentation.projection = lumaframevr::Projection::sphere;
+                else if(projection == "fisheye")
+                    presentation.projection = lumaframevr::Projection::fisheye;
+                else if(projection == "flat-sbs") {
+                    presentation.projection = lumaframevr::Projection::flat;
+                    presentation.stereo = lumaframevr::Stereo::side_by_side;
+                } else if(projection == "180-sbs") {
+                    presentation.projection = lumaframevr::Projection::hemisphere;
+                    presentation.stereo = lumaframevr::Stereo::side_by_side;
+                } else if(projection == "360-sbs") {
+                    presentation.projection = lumaframevr::Projection::sphere;
+                    presentation.stereo = lumaframevr::Stereo::side_by_side;
+                } else if(projection == "180-tb") {
+                    presentation.projection = lumaframevr::Projection::hemisphere;
+                    presentation.stereo = lumaframevr::Stereo::top_bottom;
+                } else {
+                    throw std::invalid_argument("Unknown settings projection");
+                }
+                if(presentation.projection == lumaframevr::Projection::flat && !mode.ends_with("-sbs"))
+                    presentation.stereo = lumaframevr::Stereo::mono;
             }
             lumaframevr::ui::draw_settings(canvas, presentation, 0, "", false);
             canvas.save_ppm(argv[4]);

@@ -199,20 +199,10 @@ cmake --preset frame-aarch64-gnu
 cmake --build --preset frame-aarch64-gnu
 ```
 
-```sh
-
-export LUMAFRAMEVR_QEMU=/absolute/path/to/qemu-aarch64-static
-export LUMAFRAMEVR_SDK_ROOT=/absolute/path/to/guest-environment
-
-```
-
-where `dlopen`/`dlsym` carry no `GLIBC_2.34` version, and the link fails on the SDK's
-`libvulkan.so.1`, which imports `dlopen@GLIBC_2.34`.
-
-The guest environment holds `sdk/lib` and `sysroot`; pass the ARM64 SDK prefix separately as
-`SDK` in the [cross-build command](BUILD.md#arm64-cross-build), and set
-`LUMAFRAMEVR_RUNTIME_LIBS` and `LUMAFRAMEVR_EXTRA_LIBS` for any extra guest libraries. Tests
-that run here under QEMU say nothing about the headset runtime. [Build](BUILD.md#arm64-cross-build)
+That is the whole cross setup. The toolchain file sets `CMAKE_CROSSCOMPILING_EMULATOR` when
+`qemu-aarch64-static` is on `PATH`, so `ctest` runs the target tests from the host with no runner
+script and no environment variables of its own. Tests that run under QEMU say nothing about the
+headset runtime. [Build](BUILD.md#arm64-cross-build)
 covers the presets and how to pick the target in VS Code.
 
 ## Shell installer and packaging tests

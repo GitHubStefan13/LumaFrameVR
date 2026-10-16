@@ -10,6 +10,7 @@ int application_options(int argc, char** argv);
 int browser(int argc, char** argv);
 int browser_viewport(int argc, char** argv);
 int catalogue(int argc, char** argv);
+int codec_support(int argc, char** argv);
 int controller(int argc, char** argv);
 int controller_bindings(int argc, char** argv);
 int dma_import(int argc, char** argv);

@@ -11,6 +11,9 @@ VkFormat dma_buf_format(std::uint32_t format, int bits) {
         return VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16;
     return VK_FORMAT_UNDEFINED;
 }
+VkFormat software_yuv_format(unsigned bits) {
+    return bits > 8 ? VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16 : VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+}
 std::array<float, 4> dma_buf_crop(int width, int height, std::array<int, 4> crop) {
     if(width <= 0 || height <= 0 || crop[0] < 0 || crop[1] < 0 || crop[2] < 0 || crop[3] < 0 || crop[0] + crop[2] >= width || crop[1] + crop[3] >= height)
         throw std::invalid_argument("Invalid coded DMA-BUF extent or crop");
@@ -26,7 +29,7 @@ VulkanVideoImage::VulkanVideoImage(std::shared_ptr<VulkanDevice> device, Retaine
             return;
         }
         auto pixels = pack_software_420(frame_);
-        VkFormat format = pixels.bits > 8 ? VK_FORMAT_G10X6_B10X6R10X6_2PLANE_420_UNORM_3PACK16 : VK_FORMAT_G8_B8R8_2PLANE_420_UNORM;
+        VkFormat format = software_yuv_format(pixels.bits);
         VkFormatProperties properties{};
         vkGetPhysicalDeviceFormatProperties(device_->physical(), format, &properties);
         if(!(properties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT))

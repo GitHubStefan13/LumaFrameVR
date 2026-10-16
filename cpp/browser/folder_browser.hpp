@@ -12,6 +12,9 @@ namespace lumaframevr {
 struct FolderEntry {
     std::filesystem::path path;
     bool directory;
+    // The file's size in bytes; zero for a directory, and zero when the size could not be read. Read
+    // during the scan so that listing sizes costs one stat per entry rather than one per frame.
+    std::uintmax_t size{};
 };
 using Place = std::pair<std::string, std::filesystem::path>;
 std::vector<FolderEntry> scan_folder(const std::filesystem::path& directory, bool hidden, const std::function<bool()>& cancelled);

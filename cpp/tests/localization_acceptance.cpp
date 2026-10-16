@@ -39,7 +39,7 @@ int lumaframevr::tests::localization(int argc, char** argv) {
         require(!second.language_prompt(), "a later start does not ask for the language again");
         require(i18n::active().active() == "es" && second.viewer_settings().language == "es", "the remembered language is restored");
         const auto settings = ui::viewer_setting_targets(ui::browser_listing_width, 800, languages);
-        const auto offered = std::count_if(settings.begin(), settings.end(), [](const auto& target) { return target.index == 4; });
+        const auto offered = std::count_if(settings.begin(), settings.end(), [](const auto& target) { return target.index == ui::viewer_setting_language; });
         require(offered == static_cast<int>(languages.size()), "advanced settings offers every language directly");
         const auto french = std::find_if(settings.begin(), settings.end(), [](const auto& target) { return target.language == "fr"; });
         require(french != settings.end(), "French has its own settings target");

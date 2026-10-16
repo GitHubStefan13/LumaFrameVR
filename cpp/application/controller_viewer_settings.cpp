@@ -17,6 +17,7 @@ ui::ViewerSettingsState Controller::viewer_settings() const {
     }();
     ui::ViewerSettingsState state{viewer_settings_open_,
                                   explorer.browser.hidden(),
+                                  viewer_preferences_.show_file_sizes,
                                   viewer_preferences_.save_thumbnails,
                                   viewer_preferences_.remember_last_state,
                                   viewer_setting_selected_,
@@ -104,15 +105,17 @@ void Controller::persist_viewer() {
     viewer_store_.save(viewer_preferences_);
 }
 void Controller::set_viewer_setting(std::size_t index, bool enabled) {
-    if(index == 0 && enabled != explorer.browser.hidden())
+    if(index == ui::viewer_setting_hidden && enabled != explorer.browser.hidden())
         explorer.browser.toggle_hidden();
-    else if(index == 1 && viewer_preferences_.save_thumbnails != enabled) {
+    else if(index == ui::viewer_setting_file_sizes)
+        viewer_preferences_.show_file_sizes = enabled;
+    else if(index == ui::viewer_setting_thumbnails && viewer_preferences_.save_thumbnails != enabled) {
         viewer_preferences_.save_thumbnails = enabled;
         explorer.tiles.persistence(enabled && viewer_state_path_ ? std::optional(viewer_thumbnail_path(*viewer_state_path_)) : std::nullopt);
         explorer.tiles.reset();
-    } else if(index == 2)
+    } else if(index == ui::viewer_setting_remember)
         viewer_preferences_.remember_last_state = enabled;
-    if(index >= 3)
+    if(index >= ui::viewer_setting_toggles)
         return;
     viewer_setting_selected_ = index;
     changed = true;
@@ -140,19 +143,19 @@ void Controller::start_viewer_update() {
     const auto directory = root ? std::filesystem::path(root) : executable.parent_path();
     updater_.start(directory / "update.sh", updater_.state().status == ui::UpdateStatus::available);
     update_page_ = 0;
-    viewer_setting_selected_ = 3;
+    viewer_setting_selected_ = ui::viewer_setting_update_row;
     changed = true;
     ++revision;
 }
 void Controller::click_viewer_setting(const Hit& hit) {
     if(const auto target = ui::viewer_setting_at(std::min(hit.width, ui::browser_listing_width), hit.height, i18n::active().languages(), hit.x, hit.y, viewer_settings())) {
-        if(target->index == 3)
+        if(target->index == ui::viewer_setting_close)
             viewer_settings_open_ = false;
-        else if(target->index == 4)
+        else if(target->index == ui::viewer_setting_language)
             set_viewer_language(target->language);
-        else if(target->index == 5)
+        else if(target->index == ui::viewer_setting_update)
             start_viewer_update();
-        else if(target->index == 6)
+        else if(target->index == ui::viewer_setting_update_more)
             ++update_page_;
         else
             set_viewer_setting(target->index, target->value);

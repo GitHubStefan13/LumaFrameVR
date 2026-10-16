@@ -42,6 +42,10 @@ struct V4l2Frame {
 // device wide and another client's hold looks identical to our own leak.
 // LUMAFRAMEVR_V4L2_CAPTURE_HEADROOM overrides the capture headroom (default 8).
 bool await_capture_leases(bool require_released_queues = true) noexcept;
+// Empties the per-process memory of capture-size refusals, for tests that need to observe the first
+// answer again. That memory is what stops a driver which declined the larger allocation from being
+// asked once per queue build - and every seek builds a queue.
+void v4l2_forget_capture_size_declines();
 uint64_t outstanding_capture_leases() noexcept;  // frames still holding a buffer
 uint64_t outstanding_capture_queues() noexcept;  // queues whose buffers are not released yet
 uint64_t open_decoders() noexcept;               // decoder instances this process still has open

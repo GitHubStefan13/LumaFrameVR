@@ -214,7 +214,11 @@ int lumaframevr::tests::media(int, char**) {
         require(!::media::decodable(parameters) && !decoder_name(&parameters), "444 remains unsupported");
         parameters.format = AV_PIX_FMT_YUV420P;
         parameters.codec_id = AV_CODEC_ID_AV1;
-        require(!::media::decodable(parameters), "AV1 remains outside supported policy");
+        // AV1 follows the decoder this build actually has, in software: FFmpeg 7's native "av1" entry
+        // cannot decode without a hardware accelerator, so libdav1d or libaom-av1 is what decides,
+        // and this player's own answer has to match that rather than a hand-written verdict.
+        require(::media::supported_codec(AV_CODEC_ID_AV1), "AV1 is a codec this player decodes");
+        require(::media::decodable(parameters) == ::media::av1_software_decoder_available(), "AV1 follows the software AV1 decoder this build has");
         {
             ScopedDecoderMode mode("software");
             auto opened = ::media::open(source.input().c_str());
